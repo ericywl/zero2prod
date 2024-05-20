@@ -1,14 +1,10 @@
-use axum_test::TestServer;
+mod common;
 
-fn test_server() -> TestServer {
-    let app = zero2prod::app();
-    TestServer::new(app).expect("Failed to spawn test server")
-}
-
+#[cfg(test)]
 #[tokio::test]
 async fn health_check_works() {
     // Arrange
-    let server = test_server();
+    let server = common::test_server();
 
     // Act
     let response = server.get("/health").await;
