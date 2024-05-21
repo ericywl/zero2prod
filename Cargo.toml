@@ -15,6 +15,7 @@ name = "zero2prod"
 [dependencies]
 axum = "0.7.5"
 axum-test = "14.9.1"
+config = "0.14.0"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 

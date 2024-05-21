@@ -11,7 +11,5 @@ pub fn app() -> Router {
 
 pub async fn run(listener: TcpListener) -> Result<(), std::io::Error> {
     let app = app();
-
-    // Run our app with hyper, listening globally on port 3000
     axum::serve(listener, app).await
 }

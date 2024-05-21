@@ -1,5 +1,11 @@
+use zero2prod::configuration::get_configuration;
+use zero2prod::startup::run;
+
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
-    zero2prod::startup::run(listener).await
+    let config = get_configuration().expect("Failed to read configuration.");
+
+    let address = format!("127.0.0.1:{}", config.application_port);
+    let listener = tokio::net::TcpListener::bind(address).await?;
+    run(listener).await
 }
