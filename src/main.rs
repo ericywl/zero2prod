@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use secrecy::ExposeSecret;
 use sqlx::PgPool;
 use zero2prod::configuration::{get_configuration, Settings};
 use zero2prod::startup::{run, AppState};
 use zero2prod::telemetry;
 
 pub async fn app_state(settings: &Settings) -> Arc<AppState> {
-    let pool = PgPool::connect_lazy(&settings.database.connection_string().expose_secret())
-        .expect("Failed to connect to Postgres.");
+    let pool = PgPool::connect_lazy_with(settings.database.with_db());
 
     Arc::new(AppState { db_pool: pool })
 }

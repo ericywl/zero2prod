@@ -1,8 +1,10 @@
-use secrecy::{ExposeSecret, Secret, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde_aux::field_attributes::deserialize_number_from_string;
+use sqlx::postgres::{PgConnectOptions, PgSslMode};
+use sqlx::ConnectOptions;
 
-const APP_ENVIRONMENT_ENV_VAR: &'static str = "APP_ENVIRONMENT";
+const APP_ENVIRONMENT_ENV_VAR: &str = "APP_ENVIRONMENT";
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
@@ -18,6 +20,28 @@ pub struct DatabaseSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub database_name: String,
+    // Whether the connection should be encrypted or not
+    pub require_ssl: bool,
+}
+
+impl DatabaseSettings {
+    pub fn with_db(&self) -> PgConnectOptions {
+        let ssl_mode = if self.require_ssl {
+            PgSslMode::Require
+        } else {
+            PgSslMode::Prefer
+        };
+
+        PgConnectOptions::new()
+            .host(&self.host)
+            .port(self.port)
+            .username(&self.username)
+            .password(self.password.expose_secret())
+            .database(&self.database_name)
+            .ssl_mode(ssl_mode)
+            // Logging level
+            .log_statements(tracing_log::log::LevelFilter::Trace)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,19 +49,6 @@ pub struct ApplicationSettings {
     pub host: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
-}
-
-impl DatabaseSettings {
-    pub fn connection_string(&self) -> SecretString {
-        Secret::new(format!(
-            "postgres://{}:{}@{}:{}/{}",
-            self.username,
-            self.password.expose_secret(),
-            self.host,
-            self.port,
-            self.database_name
-        ))
-    }
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {
@@ -49,7 +60,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let environment: Environment = std::env::var(APP_ENVIRONMENT_ENV_VAR)
         .unwrap_or_else(|_| Environment::Local.to_string())
         .try_into()
-        .expect(&format!("Failed to parse {}.", APP_ENVIRONMENT_ENV_VAR));
+        .unwrap_or_else(|_| panic!("Failed to parse {}.", APP_ENVIRONMENT_ENV_VAR));
     let environment_filename = format!("{}.yaml", environment);
 
     // Initialize configuration reader.
