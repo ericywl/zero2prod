@@ -1,13 +1,15 @@
 mod common;
 
+use sqlx::PgPool;
+
 #[cfg(test)]
-#[tokio::test]
-async fn health_check_works() {
+#[sqlx::test]
+async fn health_check_works(pool: PgPool) {
     // Arrange
-    let (server, _) = common::test_setup().await;
+    let setup = common::test_setup(pool).await;
 
     // Act
-    let response = server.get("/health").await;
+    let response = setup.server.get("/health").await;
 
     // Assert
     response.assert_status_ok();
