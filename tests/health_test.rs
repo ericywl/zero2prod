@@ -4,7 +4,7 @@ mod common;
 #[tokio::test]
 async fn health_check_works() {
     // Arrange
-    let server = common::test_server();
+    let (server, _) = common::test_setup().await;
 
     // Act
     let response = server.get("/health").await;
