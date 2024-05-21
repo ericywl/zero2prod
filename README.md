@@ -31,14 +31,14 @@ $ cargo run
 
 ## Deployment
 
-The code is setup so that pushes to `main` branch will trigger Continuous Deployment pipeline on DigitalOcean.
+The code can be setup so that pushes to `main` branch will trigger Continuous Deployment pipeline on DigitalOcean.
 
 To create app deployment, use:
 ```sh
 $ doctl apps create --spec spec.yaml
 ```
 
-To view the deployed app status, use:
+To view the list of apps, use:
 ```sh
 $ doctl apps list
 ```
