@@ -10,7 +10,7 @@ pub struct Settings {
 #[derive(Debug, Deserialize)]
 pub struct DatabaseSettings {
     pub username: String,
-    pub password: SecretString,
+    pub password: SecretString, // Use SecretString to prevent password from being logged
     pub host: String,
     pub port: u16,
     pub database_name: String,

@@ -16,7 +16,11 @@ pub async fn app_state(settings: &Settings) -> Arc<AppState> {
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    let subscriber = telemetry::get_subscriber("zero2prod".into(), "info".into(), std::io::stdout);
+    let subscriber = telemetry::get_subscriber(
+        "zero2prod".into(),
+        "info,axum::rejection=trace".into(),
+        std::io::stdout,
+    );
     telemetry::init_subscriber(subscriber);
 
     let config = get_configuration().expect("Failed to read configuration.");
