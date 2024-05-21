@@ -41,5 +41,6 @@ pub fn app(state: Arc<AppState>) -> Router {
 
 pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<(), std::io::Error> {
     let app = app(state);
+    tracing::debug!("Starting service on {}...", listener.local_addr().unwrap());
     axum::serve(listener, app).await
 }

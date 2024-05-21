@@ -7,8 +7,7 @@ use zero2prod::startup::{run, AppState};
 use zero2prod::telemetry;
 
 pub async fn app_state(settings: &Settings) -> Arc<AppState> {
-    let pool = PgPool::connect(&settings.database.connection_string().expose_secret())
-        .await
+    let pool = PgPool::connect_lazy(&settings.database.connection_string().expose_secret())
         .expect("Failed to connect to Postgres.");
 
     Arc::new(AppState { db_pool: pool })
@@ -25,7 +24,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     let config = get_configuration().expect("Failed to read configuration.");
     let state = app_state(&config).await;
-    let address = format!("127.0.0.1:{}", config.application_port);
+    let address = format!("{}:{}", config.application.host, config.application.port);
     let listener = tokio::net::TcpListener::bind(address).await?;
 
     run(listener, state).await
