@@ -6,7 +6,7 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::{NoContext, Timestamp, Uuid};
 
-use crate::domain::{Subscriber, SubscriberEmail, SubscriberName};
+use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
 
 use super::super::startup::AppState;
 
@@ -16,7 +16,7 @@ pub struct FormData {
     pub email: String,
 }
 
-impl TryFrom<FormData> for Subscriber {
+impl TryFrom<FormData> for NewSubscriber {
     type Error = String;
 
     fn try_from(value: FormData) -> Result<Self, Self::Error> {
@@ -38,7 +38,7 @@ pub async fn subscribe(
     State(state): State<Arc<AppState>>,
     Form(data): Form<FormData>,
 ) -> impl IntoResponse {
-    let new_subscriber: Subscriber = match data.try_into() {
+    let new_subscriber: NewSubscriber = match data.try_into() {
         Ok(sub) => sub,
         Err(_) => return StatusCode::UNPROCESSABLE_ENTITY,
     };
@@ -55,7 +55,7 @@ pub async fn subscribe(
 )]
 pub async fn insert_subscriber(
     pool: &PgPool,
-    new_subscriber: &Subscriber,
+    new_subscriber: &NewSubscriber,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
