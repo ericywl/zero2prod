@@ -6,8 +6,7 @@ use sqlx::PgPool;
 
 use zero2prod::{
     configuration::get_configuration,
-    email_client::EmailClient,
-    startup::AppState,
+    startup::{default_app_state, AppState},
     telemetry::{get_subscriber, init_subscriber},
 };
 
@@ -24,24 +23,6 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     }
 });
 
-async fn app_state(db_pool: PgPool) -> Arc<AppState> {
-    let settings = get_configuration().expect("Failed to read configuration.");
-    let email_client: EmailClient = settings
-        .email_client
-        .try_into()
-        .expect("Failed to initialized email client.");
-
-    Arc::new(AppState {
-        db_pool,
-        email_client,
-    })
-}
-
-fn test_server(state: Arc<AppState>) -> TestServer {
-    let app = zero2prod::startup::app(state);
-    TestServer::new(app).expect("Failed to spawn test server")
-}
-
 pub struct TestSetup {
     pub server: TestServer,
     pub app_state: Arc<AppState>,
@@ -50,8 +31,16 @@ pub struct TestSetup {
 pub async fn test_setup(pool: PgPool) -> TestSetup {
     Lazy::force(&TRACING);
 
-    let app_state = app_state(pool).await;
-    let server = test_server(app_state.clone());
+    let config = get_configuration().expect("Failed to read configuration.");
+
+    let app_state = Arc::new(default_app_state(&config, Some(pool)));
+    let address = config
+        .application
+        .address()
+        .expect("Failed to parse address.");
+
+    let app = zero2prod::startup::Application::new(address, app_state.clone());
+    let server = TestServer::new(app.router()).expect("Failed to spawn test server");
 
     TestSetup { server, app_state }
 }

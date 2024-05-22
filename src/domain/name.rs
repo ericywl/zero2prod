@@ -10,7 +10,7 @@ pub struct ParseNameError(String);
 
 impl AsRef<str> for ParseNameError {
     fn as_ref(&self) -> &str {
-        return &self.0;
+        &self.0
     }
 }
 

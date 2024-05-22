@@ -8,3 +8,4 @@ email_client:
   base_url: "http://127.0.0.1"
   sender_email: "test@gmail.com"
   authorization_token: "some_token"
+  timeout_ms: 500

@@ -13,6 +13,7 @@ pub struct EmailClient {
     http_client: Client,
     base_url: Url,
     authorization_token: SecretString,
+    timeout: std::time::Duration,
 }
 
 #[derive(Serialize)]
@@ -26,12 +27,18 @@ struct SendEmailRequest<'a> {
 }
 
 impl EmailClient {
-    pub fn new(base_url: Url, sender: Email, authorization_token: SecretString) -> Self {
+    pub fn new(
+        base_url: Url,
+        sender: Email,
+        authorization_token: SecretString,
+        timeout: std::time::Duration,
+    ) -> Self {
         Self {
             http_client: Client::new(),
             base_url,
             sender,
             authorization_token,
+            timeout,
         }
     }
 
@@ -54,13 +61,16 @@ impl EmailClient {
         let _ = self
             .http_client
             .post(url.inner())
+            // Add Postmark token
             .header(
                 "X-Postmark-Server-Token",
                 self.authorization_token.expose_secret(),
             )
             .json(&request_body)
+            .timeout(self.timeout)
             .send()
             .await?
+            // Return error status code
             .error_for_status()?;
 
         Ok(())
@@ -82,11 +92,13 @@ impl TryFrom<EmailClientSettings> for EmailClient {
     fn try_from(settings: EmailClientSettings) -> Result<Self, Self::Error> {
         let sender = settings.sender()?;
         let base_url = settings.url()?;
+        let timeout = settings.timeout();
 
         Ok(EmailClient::new(
             base_url,
             sender,
             settings.authorization_token,
+            timeout,
         ))
     }
 }
@@ -124,8 +136,15 @@ mod test {
     async fn test_send_email_with_mock(mock_server: &MockServer) -> Result<(), reqwest::Error> {
         let sender = Email::parse(SafeEmail().fake()).unwrap();
         let base_url = Url::parse(mock_server.uri()).unwrap();
-        let email_client = EmailClient::new(base_url, sender, Secret::new(Faker.fake()));
+        // Initialize email client
+        let email_client = EmailClient::new(
+            base_url,
+            sender,
+            Secret::new(Faker.fake()),
+            std::time::Duration::from_millis(200),
+        );
 
+        // Generate random data
         let subscriber_email = Email::parse(SafeEmail().fake()).unwrap();
         let subject: String = Sentence(1..2).fake();
         let content: String = Paragraph(1..10).fake();
@@ -186,6 +205,24 @@ mod test {
         let mock_server = MockServer::start().await;
         Mock::given(matchers::any())
             .respond_with(ResponseTemplate::new(500))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        // Act
+        let outcome = test_send_email_with_mock(&mock_server).await;
+
+        // Assert
+        assert!(outcome.is_err());
+    }
+
+    #[tokio::test]
+    async fn send_email_times_out_if_server_takes_too_long() {
+        // Arrange
+        let mock_server = MockServer::start().await;
+        let responder = ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(60));
+        Mock::given(matchers::any())
+            .respond_with(responder)
             .expect(1)
             .mount(&mock_server)
             .await;

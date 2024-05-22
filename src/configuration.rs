@@ -1,3 +1,5 @@
+use std::net::{AddrParseError, SocketAddr};
+
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde_aux::field_attributes::deserialize_number_from_string;
@@ -8,14 +10,14 @@ use crate::domain::{Email, ParseEmailError, ParseUrlError, Url};
 
 const APP_ENVIRONMENT_ENV_VAR: &str = "APP_ENVIRONMENT";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
     pub email_client: EmailClientSettings,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseSettings {
     pub username: String,
     pub password: SecretString, // Use SecretString to prevent password from being logged
@@ -47,11 +49,18 @@ impl DatabaseSettings {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ApplicationSettings {
     pub host: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
+}
+
+impl ApplicationSettings {
+    pub fn address(&self) -> Result<SocketAddr, AddrParseError> {
+        let addr = format!("{}:{}", self.host, self.port);
+        addr.parse()
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -59,6 +68,7 @@ pub struct EmailClientSettings {
     pub base_url: String,
     pub sender_email: String,
     pub authorization_token: SecretString,
+    pub timeout_ms: u64,
 }
 
 impl EmailClientSettings {
@@ -68,6 +78,10 @@ impl EmailClientSettings {
 
     pub fn url(&self) -> Result<Url, ParseUrlError> {
         Url::parse(self.base_url.clone())
+    }
+
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.timeout_ms)
     }
 }
 

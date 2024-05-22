@@ -8,3 +8,4 @@ email_client:
   base_url: "https://api.postmarkapp.com"
   sender_email: "something@shopee.com"
   authorization_token: "some_token"
+  timeout_ms: 1000

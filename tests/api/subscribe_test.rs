@@ -1,13 +1,14 @@
-mod common;
-
 use axum::http::StatusCode;
 use sqlx::PgPool;
+
+use crate::helpers;
 
 #[cfg(test)]
 #[sqlx::test]
 async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
     // Arrange
-    let setup = common::test_setup(pool).await;
+
+    let setup = helpers::test_setup(pool).await;
     let mut connection = setup
         .app_state
         .db_pool
@@ -36,7 +37,7 @@ async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
 #[sqlx::test]
 async fn subscribe_returns_400_when_data_is_missing(pool: PgPool) {
     // Arrange
-    let setup = common::test_setup(pool).await;
+    let setup = helpers::test_setup(pool).await;
     let test_cases: Vec<(&str, &[(&str, &str)])> = vec![
         ("missing the email", &[("name", "Bob Banjo")]),
         ("missing the name", &[("email", "bob_banjo@gmail.com")]),
