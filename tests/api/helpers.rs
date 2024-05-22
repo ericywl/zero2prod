@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use axum_test::TestServer;
+use axum_test::{TestResponse, TestServer};
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use sqlx::PgPool;
 
 use zero2prod::{
@@ -23,24 +24,42 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     }
 });
 
-pub struct TestSetup {
+pub struct TestApp {
     pub server: TestServer,
     pub app_state: Arc<AppState>,
 }
 
-pub async fn test_setup(pool: PgPool) -> TestSetup {
-    Lazy::force(&TRACING);
+impl TestApp {
+    pub fn setup(pool: PgPool) -> Self {
+        Lazy::force(&TRACING);
 
-    let config = get_configuration().expect("Failed to read configuration.");
+        let config = get_configuration().expect("Failed to read configuration.");
 
-    let app_state = Arc::new(default_app_state(&config, Some(pool)));
-    let address = config
-        .application
-        .address()
-        .expect("Failed to parse address.");
+        let app_state = Arc::new(default_app_state(&config, Some(pool)));
+        let address = config
+            .application
+            .address()
+            .expect("Failed to parse address.");
 
-    let app = zero2prod::startup::Application::new(address, app_state.clone());
-    let server = TestServer::new(app.router()).expect("Failed to spawn test server");
+        let app = zero2prod::startup::Application::new(address, app_state.clone());
+        let server = TestServer::new(app.router()).expect("Failed to spawn test server");
 
-    TestSetup { server, app_state }
+        Self { server, app_state }
+    }
+
+    pub async fn post_subscriptions(
+        &self,
+        name: Option<String>,
+        email: Option<String>,
+    ) -> TestResponse {
+        let mut data = vec![];
+        if name.is_some() {
+            data.push(("name", name.unwrap()))
+        }
+        if email.is_some() {
+            data.push(("email", email.unwrap()))
+        }
+
+        self.server.post("/subscribe").form(&data).await
+    }
 }

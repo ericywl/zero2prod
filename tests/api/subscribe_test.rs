@@ -8,8 +8,8 @@ use crate::helpers;
 async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
     // Arrange
 
-    let setup = helpers::test_setup(pool).await;
-    let mut connection = setup
+    let test_app = helpers::TestApp::setup(pool);
+    let mut connection = test_app
         .app_state
         .db_pool
         .acquire()
@@ -20,7 +20,7 @@ async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
     let name = "Bob Banjo";
     let email = "bob_banjo@gmail.com";
     let body = &[("name", name), ("email", email)];
-    let response = setup.server.post("/subscribe").form(body).await;
+    let response = test_app.server.post("/subscribe").form(body).await;
 
     // Assert
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -36,27 +36,94 @@ async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
 #[cfg(test)]
 #[sqlx::test]
 async fn subscribe_returns_400_when_data_is_missing(pool: PgPool) {
+    struct TestCase {
+        name: Option<String>,
+        email: Option<String>,
+    }
+
     // Arrange
-    let setup = helpers::test_setup(pool).await;
-    let test_cases: Vec<(&str, &[(&str, &str)])> = vec![
-        ("missing the email", &[("name", "Bob Banjo")]),
-        ("missing the name", &[("email", "bob_banjo@gmail.com")]),
-        ("missing both name and email", &[]),
+    let test_app = helpers::TestApp::setup(pool);
+    let test_cases: Vec<(&str, TestCase)> = vec![
         (
-            "invalid email",
-            &[("name", "Miquella"), ("email", "definitely-not-email")],
+            "missing the email",
+            TestCase {
+                name: Some("Bob Banjo".into()),
+                email: None,
+            },
+        ),
+        (
+            "missing the name",
+            TestCase {
+                name: None,
+                email: Some("bob_banjo@gmail.com".into()),
+            },
+        ),
+        (
+            "missing both name and email",
+            TestCase {
+                name: None,
+                email: None,
+            },
         ),
     ];
 
-    for (error_message, invalid_body) in test_cases {
+    for (error_message, t) in test_cases {
         // Act
-        let response = setup.server.post("/subscribe").form(invalid_body).await;
+        let response = test_app.post_subscriptions(t.name, t.email).await;
 
         // Assert
         assert_eq!(
             response.status_code(),
             StatusCode::UNPROCESSABLE_ENTITY,
-            "API did not fail with 400 Bad Request when payload was {}",
+            "API did not fail when payload was {}",
+            error_message
+        );
+    }
+}
+
+#[cfg(test)]
+#[sqlx::test]
+async fn subscribe_returns_400_when_fields_are_present_but_invalid(pool: PgPool) {
+    struct TestCase {
+        name: Option<String>,
+        email: Option<String>,
+    }
+
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool);
+    let test_cases: Vec<(&str, TestCase)> = vec![
+        (
+            "empty name",
+            TestCase {
+                name: Some("".into()),
+                email: Some("booboo@yahoo.com".into()),
+            },
+        ),
+        (
+            "empty email",
+            TestCase {
+                name: Some("Aloha".into()),
+                email: Some("".into()),
+            },
+        ),
+        (
+            "invalid email",
+            TestCase {
+                name: Some("Totally not Fake".into()),
+                email: Some("definitely-not-email".into()),
+            },
+        ),
+    ];
+
+    for (error_message, t) in test_cases {
+        // Act
+        let response = test_app.post_subscriptions(t.name, t.email).await;
+
+        // Assert
+        assert_eq!(
+            response.status_code(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "API did not fail when payload was {}",
             error_message
         );
     }
