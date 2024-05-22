@@ -39,6 +39,9 @@ then
         postgres -N 1000 # Increased maximum number of connections for testing purposes
 fi
 
+DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+export DATABASE_URL
+
 # Keep pinging Postgres until it's ready to accept commands
 until pg_isready --dbname "${DATABASE_URL}"; do
   >&2 echo "Postgres is still unavailable - sleeping"
@@ -47,8 +50,6 @@ done
 
 >&2 echo "Postgres is up and running on port ${DB_PORT} - running migrations now!"
 
-DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-export DATABASE_URL
 sqlx database create
 sqlx migrate run
 
