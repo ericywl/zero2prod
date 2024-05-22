@@ -33,6 +33,13 @@ tracing-subscriber = { version = "0.3.18", features = [
 ] }
 uuid = { version = "1", features = ["v4", "v7"] }
 serde-aux = "4.5.0"
+unicode-segmentation = "1.11.0"
+thiserror = "1.0.61"
+validator = "0.18.1"
+fake = "2.9.2"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+rand = "0.8.5"
 
 [dependencies.sqlx]
 version = "0.7"

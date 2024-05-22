@@ -37,13 +37,17 @@ async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
 async fn subscribe_returns_400_when_data_is_missing(pool: PgPool) {
     // Arrange
     let setup = common::test_setup(pool).await;
-    let test_cases = vec![
-        (&[("name", "Bob Banjo")], "missing the email"),
-        (&[("email", "bob_banjo@gmail.com")], "missing the name"),
-        (&[("", "")], "missing both name and email"),
+    let test_cases: Vec<(&str, &[(&str, &str)])> = vec![
+        ("missing the email", &[("name", "Bob Banjo")]),
+        ("missing the name", &[("email", "bob_banjo@gmail.com")]),
+        ("missing both name and email", &[]),
+        (
+            "invalid email",
+            &[("name", "Miquella"), ("email", "definitely-not-email")],
+        ),
     ];
 
-    for (invalid_body, error_message) in test_cases {
+    for (error_message, invalid_body) in test_cases {
         // Act
         let response = setup.server.post("/subscribe").form(invalid_body).await;
 

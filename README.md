@@ -27,14 +27,14 @@ Before running anything, add the following environment variable to `.env` or exp
 DATABASE_URL=postgres://postgres:password@localhost:5432/newsletter
 ```
 
-Start up the database Docker container.
+Then, start up the database Docker container.
 ```sh
 $ ./scripts/init_db.sh
 ```
 
 ### Application
 
-Then, run the following to start the application.
+Run the following to start the application.
 ```sh
 $ cargo run
 ```
@@ -49,6 +49,11 @@ $ cargo watch -x check -x test -x run
 
 The code can be setup so that pushes to `main` branch will trigger Continuous Deployment pipeline on DigitalOcean.
 
+To authenticate yourself with DigitalOcean cli, use:
+```sh
+$ doctl auth init
+```
+
 To create app deployment, use:
 ```sh
 $ doctl apps create --spec spec.yaml
@@ -57,4 +62,12 @@ $ doctl apps create --spec spec.yaml
 To view the list of apps, use:
 ```sh
 $ doctl apps list
+```
+
+Unfortunately, we are running database migrations manually. 
+
+First go to the DigitalOcean dashboard and disable "Trusted Sources" in the dev database. Then copy the database
+connection string and run the following migration:
+```sh
+$ DATABASE_URL=<DIGITALOCEAN_DATABASE_CONNECTION_STRING> sqlx migrate run
 ```

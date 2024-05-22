@@ -6,12 +6,24 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::{NoContext, Timestamp, Uuid};
 
+use crate::domain::{Subscriber, SubscriberEmail, SubscriberName};
+
 use super::super::startup::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct FormData {
     pub name: String,
     pub email: String,
+}
+
+impl TryFrom<FormData> for Subscriber {
+    type Error = String;
+
+    fn try_from(value: FormData) -> Result<Self, Self::Error> {
+        let name = SubscriberName::parse(value.name)?;
+        let email = SubscriberEmail::parse(value.email)?;
+        Ok(Self { name, email })
+    }
 }
 
 #[tracing::instrument(
@@ -26,7 +38,12 @@ pub async fn subscribe(
     State(state): State<Arc<AppState>>,
     Form(data): Form<FormData>,
 ) -> impl IntoResponse {
-    match insert_subscriber(&state.db_pool, &data).await {
+    let new_subscriber: Subscriber = match data.try_into() {
+        Ok(sub) => sub,
+        Err(_) => return StatusCode::UNPROCESSABLE_ENTITY,
+    };
+
+    match insert_subscriber(&state.db_pool, &new_subscriber).await {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -34,17 +51,20 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name = "Saving new subscriber details in the database",
-    skip(pool, data)
+    skip(pool, new_subscriber)
 )]
-pub async fn insert_subscriber(pool: &PgPool, data: &FormData) -> Result<(), sqlx::Error> {
+pub async fn insert_subscriber(
+    pool: &PgPool,
+    new_subscriber: &Subscriber,
+) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-            INSERT INTO subscriptions (id, email, name, subscribed_at)
+            INSERT INTO subscriptions (id, name, email, subscribed_at)
             VALUES ($1, $2, $3, $4)
             "#,
         Uuid::new_v7(Timestamp::now(NoContext)),
-        data.email,
-        data.name,
+        new_subscriber.name.as_ref(),
+        new_subscriber.email.as_ref(),
         Utc::now()
     )
     .execute(pool)
