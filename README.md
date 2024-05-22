@@ -19,14 +19,30 @@ So that I can notify them when new content is published.
 ```
 
 ## Development
-Before running anything, start up the database Docker container.
-```sh
-$ DATABASE_URL=postgres://postgres:password@localhost:5432/newsletter ./scripts/init_db.sh
+
+### Database
+
+Before running anything, add the following environment variable to `.env` or export it.
 ```
+DATABASE_URL=postgres://postgres:password@localhost:5432/newsletter
+```
+
+Start up the database Docker container.
+```sh
+$ ./scripts/init_db.sh
+```
+
+### Application
 
 Then, run the following to start the application.
 ```sh
 $ cargo run
+```
+
+You can also use `cargo watch` to automatically run on any changes.
+```sh
+$ cargo install cargo-watch
+$ cargo watch -x check -x test -x run
 ```
 
 ## Deployment
