@@ -1,4 +1,4 @@
--- Create Subscriptions Table
+-- Create subscriptions table
 CREATE TABLE subscriptions(
     id uuid NOT NULL,
     PRIMARY KEY (id),

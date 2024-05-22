@@ -8,6 +8,7 @@ use thiserror::Error;
 use uuid::{NoContext, Timestamp, Uuid};
 
 use crate::domain::{Email, Name, NewSubscriber, ParseEmailError, ParseNameError};
+use crate::email_client::{EmailClient, SendEmailError};
 use crate::startup::AppState;
 
 #[derive(Debug, Error)]
@@ -52,10 +53,23 @@ pub async fn subscribe(
         Err(_) => return StatusCode::UNPROCESSABLE_ENTITY,
     };
 
-    match insert_subscriber(&state.db_pool, &new_subscriber).await {
-        Ok(_) => StatusCode::OK,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    // Insert subscriber to DB
+    if insert_subscriber(&state.db_pool, &new_subscriber)
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR;
     }
+
+    // Send email
+    if send_subscriber_email(&state.email_client, &new_subscriber)
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+
+    StatusCode::OK
 }
 
 #[tracing::instrument(
@@ -68,13 +82,14 @@ pub async fn insert_subscriber(
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-            INSERT INTO subscriptions (id, name, email, subscribed_at)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO subscriptions (id, name, email, subscribed_at, status)
+            VALUES ($1, $2, $3, $4, $5)
             "#,
         Uuid::new_v7(Timestamp::now(NoContext)),
         new_subscriber.name.as_ref(),
         new_subscriber.email.as_ref(),
-        Utc::now()
+        Utc::now(),
+        "confirmed",
     )
     .execute(pool)
     .await
@@ -84,4 +99,22 @@ pub async fn insert_subscriber(
     })?;
 
     Ok(())
+}
+
+#[tracing::instrument(
+    name = "Sending confirmation email to new subscriber",
+    skip(email_client, new_subscriber)
+)]
+pub async fn send_subscriber_email(
+    email_client: &EmailClient,
+    new_subscriber: &NewSubscriber,
+) -> Result<(), SendEmailError> {
+    email_client
+        .send_email(
+            &new_subscriber.email,
+            "Welcome!",
+            "Welcome to our newsletter!",
+            "Welcome to our newsletter!",
+        )
+        .await
 }

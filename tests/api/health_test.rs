@@ -6,7 +6,7 @@ async fn health_check_works(pool: PgPool) {
     // Arrange
 
     use crate::helpers;
-    let test_app = helpers::TestApp::setup(pool);
+    let test_app = helpers::TestApp::setup(pool).await;
 
     // Act
     let response = test_app.server.get("/health").await;

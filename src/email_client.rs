@@ -26,6 +26,12 @@ struct SendEmailRequest<'a> {
     text_body: &'a str,
 }
 
+#[derive(Debug, Error)]
+pub enum SendEmailError {
+    #[error(transparent)]
+    Request(#[from] reqwest::Error),
+}
+
 impl EmailClient {
     pub fn new(
         base_url: Url,
@@ -44,11 +50,11 @@ impl EmailClient {
 
     pub async fn send_email(
         &self,
-        recipient: Email,
+        recipient: &Email,
         subject: &str,
         html_content: &str,
         text_content: &str,
-    ) -> Result<(), reqwest::Error> {
+    ) -> Result<(), SendEmailError> {
         let url = self.base_url.join("email").unwrap();
         let request_body = SendEmailRequest {
             from: self.sender.as_ref(),
@@ -113,7 +119,7 @@ mod test {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use crate::domain::{Email, Url};
-    use crate::email_client::EmailClient;
+    use crate::email_client::{EmailClient, SendEmailError};
 
     struct SendEmailBodyMatcher;
 
@@ -133,7 +139,7 @@ mod test {
         }
     }
 
-    async fn test_send_email_with_mock(mock_server: &MockServer) -> Result<(), reqwest::Error> {
+    async fn test_send_email_with_mock(mock_server: &MockServer) -> Result<(), SendEmailError> {
         let sender = Email::parse(SafeEmail().fake()).unwrap();
         let base_url = Url::parse(mock_server.uri()).unwrap();
         // Initialize email client
@@ -150,7 +156,7 @@ mod test {
         let content: String = Paragraph(1..10).fake();
 
         let outcome = email_client
-            .send_email(subscriber_email, &subject, &content, &content)
+            .send_email(&subscriber_email, &subject, &content, &content)
             .await;
 
         outcome

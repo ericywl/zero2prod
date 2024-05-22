@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use axum_test::{TestResponse, TestServer};
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use sqlx::PgPool;
 
+use wiremock::MockServer;
 use zero2prod::{
     configuration::get_configuration,
     startup::{default_app_state, AppState},
@@ -27,13 +27,22 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 pub struct TestApp {
     pub server: TestServer,
     pub app_state: Arc<AppState>,
+    pub email_server: MockServer,
 }
 
 impl TestApp {
-    pub fn setup(pool: PgPool) -> Self {
+    pub async fn setup(pool: PgPool) -> Self {
         Lazy::force(&TRACING);
 
-        let config = get_configuration().expect("Failed to read configuration.");
+        // Launch mock server to stand in for Postmark's API
+        let email_server = MockServer::start().await;
+
+        let config = {
+            let mut c = get_configuration().expect("Failed to read configuration.");
+            // Overwrite email client URL to use mock server
+            c.email_client.base_url = email_server.uri();
+            c
+        };
 
         let app_state = Arc::new(default_app_state(&config, Some(pool)));
         let address = config
@@ -44,7 +53,11 @@ impl TestApp {
         let app = zero2prod::startup::Application::new(address, app_state.clone());
         let server = TestServer::new(app.router()).expect("Failed to spawn test server");
 
-        Self { server, app_state }
+        Self {
+            server,
+            app_state,
+            email_server,
+        }
     }
 
     pub async fn post_subscriptions(

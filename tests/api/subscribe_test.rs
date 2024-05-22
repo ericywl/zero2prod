@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use sqlx::PgPool;
+use wiremock::{matchers, Mock, ResponseTemplate};
 
 use crate::helpers;
 
@@ -7,8 +8,7 @@ use crate::helpers;
 #[sqlx::test]
 async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
     // Arrange
-
-    let test_app = helpers::TestApp::setup(pool);
+    let test_app = helpers::TestApp::setup(pool).await;
     let mut connection = test_app
         .app_state
         .db_pool
@@ -16,14 +16,22 @@ async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
         .await
         .expect("Failed to get connection from pool.");
 
+    Mock::given(matchers::path("/email"))
+        .and(matchers::method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&test_app.email_server)
+        .await;
+
     // Act
     let name = "Bob Banjo";
     let email = "bob_banjo@gmail.com";
-    let body = &[("name", name), ("email", email)];
-    let response = test_app.server.post("/subscribe").form(body).await;
+    let response = test_app
+        .post_subscriptions(Some(name.into()), Some(email.into()))
+        .await;
 
     // Assert
-    assert_eq!(response.status_code(), StatusCode::OK);
+    response.assert_status_ok();
 
     let saved = sqlx::query!("SELECT name, email FROM subscriptions",)
         .fetch_one(&mut *connection)
@@ -42,7 +50,7 @@ async fn subscribe_returns_400_when_data_is_missing(pool: PgPool) {
     }
 
     // Arrange
-    let test_app = helpers::TestApp::setup(pool);
+    let test_app = helpers::TestApp::setup(pool).await;
     let test_cases: Vec<(&str, TestCase)> = vec![
         (
             "missing the email",
@@ -90,7 +98,7 @@ async fn subscribe_returns_400_when_fields_are_present_but_invalid(pool: PgPool)
     }
 
     // Arrange
-    let test_app = helpers::TestApp::setup(pool);
+    let test_app = helpers::TestApp::setup(pool).await;
     let test_cases: Vec<(&str, TestCase)> = vec![
         (
             "empty name",
@@ -127,4 +135,26 @@ async fn subscribe_returns_400_when_fields_are_present_but_invalid(pool: PgPool)
             error_message
         );
     }
+}
+
+#[cfg(test)]
+#[sqlx::test]
+async fn subscribe_sends_a_confirmation_email_for_valid_data(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+
+    Mock::given(matchers::path("/email"))
+        .and(matchers::method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&test_app.email_server)
+        .await;
+
+    // Act
+    let response = test_app
+        .post_subscriptions(Some("Le Mao".into()), Some("lemao@gmail.com".into()))
+        .await;
+
+    // Assert
+    response.assert_status_ok();
 }
