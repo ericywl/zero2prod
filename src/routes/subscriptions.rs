@@ -6,7 +6,7 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::{NoContext, Timestamp, Uuid};
 
-use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
+use crate::domain::{Email, Name, NewSubscriber};
 
 use super::super::startup::AppState;
 
@@ -20,8 +20,8 @@ impl TryFrom<FormData> for NewSubscriber {
     type Error = String;
 
     fn try_from(value: FormData) -> Result<Self, Self::Error> {
-        let name = SubscriberName::parse(value.name)?;
-        let email = SubscriberEmail::parse(value.email)?;
+        let name = Name::parse(value.name)?;
+        let email = Email::parse(value.email)?;
         Ok(Self { name, email })
     }
 }

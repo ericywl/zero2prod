@@ -1,12 +1,12 @@
 use validator::ValidateEmail;
 
-pub struct SubscriberEmail(String);
+pub struct Email(String);
 
-impl SubscriberEmail {
-    /// Returns an instance of `SubscriberEmail` if the input satisfies all
+impl Email {
+    /// Returns an instance of `Email` if the input satisfies all
     /// our validation constraints on subscriber emails.
-    /// It returns `SubscriberEmailParseError` otherwise.
-    pub fn parse(s: String) -> Result<SubscriberEmail, String> {
+    /// It returns error otherwise.
+    pub fn parse(s: String) -> Result<Email, String> {
         let email = Self(s.clone());
         if !email.validate_email() {
             Err(format!("{} is not a valid subscriber email.", s))
@@ -16,13 +16,13 @@ impl SubscriberEmail {
     }
 }
 
-impl AsRef<str> for SubscriberEmail {
+impl AsRef<str> for Email {
     fn as_ref(&self) -> &str {
         &self.0
     }
 }
 
-impl ValidateEmail for SubscriberEmail {
+impl ValidateEmail for Email {
     fn as_email_string(&self) -> Option<std::borrow::Cow<str>> {
         Some(std::borrow::Cow::Borrowed(self.as_ref()))
     }
@@ -55,23 +55,23 @@ mod test {
     #[test]
     fn empty_email_is_rejected() {
         let email = "".to_string();
-        assert!(SubscriberEmail::parse(email).is_err());
+        assert!(Email::parse(email).is_err());
     }
 
     #[test]
     fn email_missing_at_symbol_is_rejected() {
         let email = "mydomain.com".to_string();
-        assert!(SubscriberEmail::parse(email).is_err());
+        assert!(Email::parse(email).is_err());
     }
 
     #[test]
     fn email_missing_subject_is_rejected() {
         let email = "@domain.com".to_string();
-        assert!(SubscriberEmail::parse(email).is_err());
+        assert!(Email::parse(email).is_err());
     }
 
     #[quickcheck_macros::quickcheck]
     fn valid_email_is_parsed_successfully(valid_email: ValidEmailFixture) {
-        assert!(SubscriberEmail::parse(valid_email.0).is_ok());
+        assert!(Email::parse(valid_email.0).is_ok());
     }
 }

@@ -2,13 +2,13 @@ use unicode_segmentation::UnicodeSegmentation;
 
 const MAX_SUBSCRIBER_NAME_LENGTH: usize = 256;
 
-pub struct SubscriberName(String);
+pub struct Name(String);
 
-impl SubscriberName {
-    /// Returns an instance of `SubscriberName` if the input satisfies all
+impl Name {
+    /// Returns an instance of `Name` if the input satisfies all
     /// our validation constraints on subscriber names.
-    /// It returns `SubscriberNameParseError` otherwise.
-    pub fn parse(s: String) -> Result<SubscriberName, String> {
+    /// It returns error otherwise.
+    pub fn parse(s: String) -> Result<Name, String> {
         // `.trim()` returns a view over the input `s` without trailing
         // whitespace-like characters.
         // `.is_empty` checks if the view contains any character.
@@ -46,7 +46,7 @@ impl SubscriberName {
     }
 }
 
-impl AsRef<str> for SubscriberName {
+impl AsRef<str> for Name {
     fn as_ref(&self) -> &str {
         &self.0
     }
@@ -59,38 +59,38 @@ mod test {
     #[test]
     fn grapheme_max_length_long_name_is_valid() {
         let name = "ё".repeat(MAX_SUBSCRIBER_NAME_LENGTH);
-        assert!(SubscriberName::parse(name).is_ok())
+        assert!(Name::parse(name).is_ok())
     }
 
     #[test]
     fn name_longer_than_grapheme_max_length_is_rejected() {
         let name = "a".repeat(MAX_SUBSCRIBER_NAME_LENGTH + 1);
-        assert!(SubscriberName::parse(name).is_err())
+        assert!(Name::parse(name).is_err())
     }
 
     #[test]
     fn whitespace_only_name_is_rejected() {
         let name = " ".to_string();
-        assert!(SubscriberName::parse(name).is_err())
+        assert!(Name::parse(name).is_err())
     }
 
     #[test]
     fn empty_string_is_rejected() {
         let name = "".to_string();
-        assert!(SubscriberName::parse(name).is_err());
+        assert!(Name::parse(name).is_err());
     }
 
     #[test]
     fn name_containing_invalid_characters_is_rejected() {
         for name in &['/', '(', ')', '"', '<', '>', '\\', '{', '}'] {
             let name = name.to_string();
-            assert!(SubscriberName::parse(name).is_err());
+            assert!(Name::parse(name).is_err());
         }
     }
 
     #[test]
     fn valid_name_is_parsed_successfully() {
         let name = "Le Pomodoro Primo Passo".to_string();
-        assert!(SubscriberName::parse(name).is_ok())
+        assert!(Name::parse(name).is_ok())
     }
 }
