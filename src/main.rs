@@ -2,13 +2,22 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 use zero2prod::configuration::{get_configuration, Settings};
+use zero2prod::email_client::EmailClient;
 use zero2prod::startup::{run, AppState};
 use zero2prod::telemetry;
 
 pub async fn app_state(settings: &Settings) -> Arc<AppState> {
-    let pool = PgPool::connect_lazy_with(settings.database.with_db());
+    let db_pool = PgPool::connect_lazy_with(settings.database.with_db());
+    let email_client: EmailClient = settings
+        .email_client
+        .clone()
+        .try_into()
+        .expect("Failed to initialize email client.");
 
-    Arc::new(AppState { db_pool: pool })
+    Arc::new(AppState {
+        db_pool,
+        email_client,
+    })
 }
 
 #[tokio::main]

@@ -4,11 +4,20 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Form};
 use chrono::Utc;
 use serde::Deserialize;
 use sqlx::PgPool;
+use thiserror::Error;
 use uuid::{NoContext, Timestamp, Uuid};
 
-use crate::domain::{Email, Name, NewSubscriber};
+use crate::domain::{Email, Name, NewSubscriber, ParseEmailError, ParseNameError};
+use crate::startup::AppState;
 
-use super::super::startup::AppState;
+#[derive(Debug, Error)]
+pub enum FormDataError {
+    #[error(transparent)]
+    ParseName(#[from] ParseNameError),
+
+    #[error(transparent)]
+    ParseEmail(#[from] ParseEmailError),
+}
 
 #[derive(Debug, Deserialize)]
 pub struct FormData {
@@ -17,7 +26,7 @@ pub struct FormData {
 }
 
 impl TryFrom<FormData> for NewSubscriber {
-    type Error = String;
+    type Error = FormDataError;
 
     fn try_from(value: FormData) -> Result<Self, Self::Error> {
         let name = Name::parse(value.name)?;

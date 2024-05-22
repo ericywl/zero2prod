@@ -1,15 +1,36 @@
+use std::fmt::Display;
+
+use thiserror::Error;
 use validator::ValidateEmail;
+
+#[derive(Debug, Error)]
+pub struct ParseEmailError(String);
+
+impl AsRef<str> for ParseEmailError {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for ParseEmailError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
 
 pub struct Email(String);
 
 impl Email {
     /// Returns an instance of `Email` if the input satisfies all
     /// our validation constraints on subscriber emails.
-    /// It returns error otherwise.
-    pub fn parse(s: String) -> Result<Email, String> {
+    /// It returns `ParseEmailError` otherwise.
+    pub fn parse(s: String) -> Result<Email, ParseEmailError> {
         let email = Self(s.clone());
         if !email.validate_email() {
-            Err(format!("{} is not a valid subscriber email.", s))
+            Err(ParseEmailError(format!(
+                "{} is not a valid subscriber email.",
+                s
+            )))
         } else {
             Ok(email)
         }

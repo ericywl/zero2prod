@@ -5,6 +5,8 @@ use once_cell::sync::Lazy;
 use sqlx::PgPool;
 
 use zero2prod::{
+    configuration::get_configuration,
+    email_client::EmailClient,
     startup::AppState,
     telemetry::{get_subscriber, init_subscriber},
 };
@@ -22,8 +24,17 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     }
 });
 
-async fn app_state(pool: PgPool) -> Arc<AppState> {
-    Arc::new(AppState { db_pool: pool })
+async fn app_state(db_pool: PgPool) -> Arc<AppState> {
+    let settings = get_configuration().expect("Failed to read configuration.");
+    let email_client: EmailClient = settings
+        .email_client
+        .try_into()
+        .expect("Failed to initialized email client.");
+
+    Arc::new(AppState {
+        db_pool,
+        email_client,
+    })
 }
 
 fn test_server(state: Arc<AppState>) -> TestServer {

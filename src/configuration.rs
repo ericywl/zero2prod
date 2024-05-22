@@ -4,12 +4,15 @@ use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 
+use crate::domain::{Email, ParseEmailError, ParseUrlError, Url};
+
 const APP_ENVIRONMENT_ENV_VAR: &str = "APP_ENVIRONMENT";
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
+    pub email_client: EmailClientSettings,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +52,23 @@ pub struct ApplicationSettings {
     pub host: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct EmailClientSettings {
+    pub base_url: String,
+    pub sender_email: String,
+    pub authorization_token: SecretString,
+}
+
+impl EmailClientSettings {
+    pub fn sender(&self) -> Result<Email, ParseEmailError> {
+        Email::parse(self.sender_email.clone())
+    }
+
+    pub fn url(&self) -> Result<Url, ParseUrlError> {
+        Url::parse(self.base_url.clone())
+    }
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {

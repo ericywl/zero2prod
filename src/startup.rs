@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::email_client::EmailClient;
+
 use super::routes;
 use axum::{http::Request, routing, Router};
 use tokio::net::TcpListener;
@@ -11,6 +13,7 @@ use tracing::Level;
 
 pub struct AppState {
     pub db_pool: sqlx::PgPool,
+    pub email_client: EmailClient,
 }
 
 pub fn app(state: Arc<AppState>) -> Router {

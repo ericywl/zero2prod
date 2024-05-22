@@ -1,14 +1,32 @@
+use std::fmt::Display;
+
+use thiserror::Error;
 use unicode_segmentation::UnicodeSegmentation;
 
 const MAX_SUBSCRIBER_NAME_LENGTH: usize = 256;
+
+#[derive(Debug, Error)]
+pub struct ParseNameError(String);
+
+impl AsRef<str> for ParseNameError {
+    fn as_ref(&self) -> &str {
+        return &self.0;
+    }
+}
+
+impl Display for ParseNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
 
 pub struct Name(String);
 
 impl Name {
     /// Returns an instance of `Name` if the input satisfies all
     /// our validation constraints on subscriber names.
-    /// It returns error otherwise.
-    pub fn parse(s: String) -> Result<Name, String> {
+    /// It returns `ParseNameError` otherwise.
+    pub fn parse(s: String) -> Result<Name, ParseNameError> {
         // `.trim()` returns a view over the input `s` without trailing
         // whitespace-like characters.
         // `.is_empty` checks if the view contains any character.
@@ -29,7 +47,10 @@ impl Name {
         let contains_forbidden_characters = s.chars().any(|g| forbidden_characters.contains(&g));
 
         if is_empty_or_whitespace || is_too_long || contains_forbidden_characters {
-            Err(format!("{} is not a valid subscriber name.", s))
+            Err(ParseNameError(format!(
+                "{} is not a valid subscriber name.",
+                s
+            )))
         } else {
             Ok(Self(s))
         }
