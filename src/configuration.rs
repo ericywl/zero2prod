@@ -54,12 +54,17 @@ pub struct ApplicationSettings {
     pub host: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
+    pub base_url: String,
 }
 
 impl ApplicationSettings {
     pub fn address(&self) -> Result<SocketAddr, AddrParseError> {
         let addr = format!("{}:{}", self.host, self.port);
         addr.parse()
+    }
+
+    pub fn base_url(&self) -> Result<Url, ParseUrlError> {
+        Url::parse(self.base_url.clone())
     }
 }
 

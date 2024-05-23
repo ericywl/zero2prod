@@ -46,11 +46,12 @@ async fn subscribe_persists_new_subscriber(pool: PgPool) {
         .await
         .expect("Failed to fetch saved subscription");
 
-    assert_eq!(saved.name, name);
-    assert_eq!(saved.email, email);
+    assert_eq!(saved.name, name, "Name not equal");
+    assert_eq!(saved.email, email, "Email not equal");
     assert_eq!(
         saved.status,
-        SubscriptionStatus::PendingConfirmation.to_string()
+        SubscriptionStatus::PendingConfirmation.to_string(),
+        "Status not pending confirmation"
     )
 }
 
@@ -186,10 +187,14 @@ async fn subscribe_sends_confirmation_email_with_link(pool: PgPool) {
         .await;
 
     // Act
-    let (html_link, text_link) = test_app
+    let confirmation_links = test_app
         .post_subscriptions_and_extract_confirmation_link(Some(name), Some(email))
         .await;
 
     // Assert
-    assert_eq!(html_link, text_link);
+    assert_eq!(
+        confirmation_links.html.as_str(),
+        confirmation_links.plain_text.as_ref(),
+        "HTML and plain text confirmation links not equal"
+    );
 }

@@ -55,7 +55,7 @@ impl EmailClient {
         html_content: &str,
         text_content: &str,
     ) -> Result<(), SendEmailError> {
-        let url = self.base_url.join("email").unwrap();
+        let url = self.base_url.join("email").unwrap(); // safely unwrap since it's proper url
         let request_body = SendEmailRequest {
             from: self.sender.as_ref(),
             to: recipient.as_ref(),
@@ -66,7 +66,7 @@ impl EmailClient {
 
         let _ = self
             .http_client
-            .post(url.inner())
+            .post(url.to_string())
             // Add Postmark token
             .header(
                 "X-Postmark-Server-Token",

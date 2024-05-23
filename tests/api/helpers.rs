@@ -7,6 +7,7 @@ use sqlx::PgPool;
 use wiremock::MockServer;
 use zero2prod::{
     configuration::get_configuration,
+    domain::Url,
     startup::{default_app_state, AppState},
     telemetry::{get_subscriber, init_subscriber},
 };
@@ -23,6 +24,11 @@ static TRACING: Lazy<()> = Lazy::new(|| {
         init_subscriber(subscriber);
     }
 });
+
+pub struct ConfirmationLinks {
+    pub html: Url,
+    pub plain_text: Url,
+}
 
 pub struct TestApp {
     pub server: TestServer,
@@ -86,7 +92,7 @@ impl TestApp {
         &self,
         name: Option<String>,
         email: Option<String>,
-    ) -> (String, String) {
+    ) -> ConfirmationLinks {
         let response = self.post_subscriptions(name, email).await;
         response.assert_status_ok();
 
@@ -108,6 +114,10 @@ impl TestApp {
         let html_link = get_link(&body["HtmlBody"].as_str().unwrap());
         let text_link = get_link(&body["TextBody"].as_str().unwrap());
 
-        (html_link, text_link)
+        ConfirmationLinks {
+            html: Url::parse(html_link).expect("Failed to parse html confirmation link."),
+            plain_text: Url::parse(text_link)
+                .expect("Failed to parse plain text confirmation link."),
+        }
     }
 }

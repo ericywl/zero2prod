@@ -37,7 +37,38 @@ impl Url {
         }
     }
 
-    pub fn inner(&self) -> reqwest::Url {
-        self.0.clone()
+    pub fn set_query(&mut self, query: Option<&str>) {
+        self.0.set_query(query)
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.as_ref()
+    }
+
+    pub fn host_str(&self) -> Option<&str> {
+        self.0.host_str()
+    }
+
+    pub fn path(&self) -> &str {
+        self.0.path()
+    }
+
+    pub fn query_params(&self) -> Vec<(String, String)> {
+        self.0
+            .query_pairs()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+}
+
+impl ToString for Url {
+    fn to_string(&self) -> String {
+        self.0.to_string()
+    }
+}
+
+impl AsRef<str> for Url {
+    fn as_ref(&self) -> &str {
+        self.0.as_str()
     }
 }

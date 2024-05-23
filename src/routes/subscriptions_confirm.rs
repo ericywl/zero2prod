@@ -1,11 +1,12 @@
 use axum::{extract::Query, http::StatusCode};
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Parameters {
-    confirmation_token: String,
+    subscription_token: String,
 }
 
-pub async fn confirm(_params: Query<Parameters>) -> StatusCode {
+#[tracing::instrument(name = "Confirm a pending subscriber", skip(params))]
+pub async fn confirm(Query(params): Query<Parameters>) -> StatusCode {
     StatusCode::OK
 }

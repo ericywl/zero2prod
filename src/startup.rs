@@ -9,7 +9,7 @@ use tower_http::{
 };
 use tracing::Level;
 
-use crate::{configuration::Settings, email_client::EmailClient};
+use crate::{configuration::Settings, domain::Url, email_client::EmailClient};
 
 pub struct Application {
     address: SocketAddr,
@@ -73,6 +73,7 @@ impl Application {
 pub struct AppState {
     pub db_pool: sqlx::PgPool,
     pub email_client: EmailClient,
+    pub app_base_url: Url,
 }
 
 pub fn default_app_state(settings: &Settings, overwrite_db_pool: Option<sqlx::PgPool>) -> AppState {
@@ -87,8 +88,14 @@ pub fn default_app_state(settings: &Settings, overwrite_db_pool: Option<sqlx::Pg
         .try_into()
         .expect("Failed to initialize email client.");
 
+    let app_base_url = settings
+        .application
+        .base_url()
+        .expect("Failed to parse application base url.");
+
     AppState {
         db_pool,
         email_client,
+        app_base_url,
     }
 }
