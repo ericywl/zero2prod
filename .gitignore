@@ -1,3 +1,6 @@
+# Fake emails
+/.fake_emails
+
 # Rust builds
 /target
 

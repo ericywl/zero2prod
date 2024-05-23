@@ -23,6 +23,7 @@ impl Application {
             .route("/health", routing::get(routes::health_check))
             .route("/subscribe", routing::post(routes::subscribe))
             .route("/subscribe/confirm", routing::get(routes::confirm))
+            .route("/email", routing::post(routes::fake_email))
             .with_state(app_state)
             .layer(
                 TraceLayer::new_for_http()
