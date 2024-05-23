@@ -13,6 +13,7 @@ use crate::domain::{
 };
 use crate::email_client::{EmailClient, SendEmailError};
 use crate::startup::AppState;
+use crate::template;
 
 use super::handler_response::HandlerResponse;
 
@@ -159,11 +160,7 @@ pub async fn send_confirmation_email(
         subscription_token.as_str()
     )));
 
-    let html_body = format!(
-        "Welcome to our newsletter!<br />\
-        Click <a href=\"{}\">here</a> to confirm your subscription.",
-        confirmation_link,
-    );
+    let html_body = template::confirmation_email_with_link(&confirmation_link);
     let plain_body = format!(
         "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
         confirmation_link,

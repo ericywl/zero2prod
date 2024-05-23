@@ -22,6 +22,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde-aux = "4.5.0"
 strum = "0.26"
 strum_macros = "0.26"
+tera = { version = "1.19.1", default-features = false }
 thiserror = "1.0.61"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5.2", features = ["trace"] }
@@ -35,6 +36,7 @@ tracing-subscriber = { version = "0.3.18", features = [
 uuid = { version = "1", features = ["v4", "v7"] }
 unicode-segmentation = "1.11.0"
 validator = "0.18.1"
+lazy_static = "1.4.0"
 
 [dependencies.chrono]
 version = "0.4"

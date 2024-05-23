@@ -105,10 +105,10 @@ impl TestApp {
                 .links(s)
                 .filter(|l| *l.kind() == linkify::LinkKind::Url)
                 .collect();
-            // There should only be 1 link for confirmation
-            assert_eq!(links.len(), 1);
-
-            links[0].as_str().to_string()
+            // There should be at least 1 link for confirmation
+            assert!(links.len() > 0);
+            // The link is always the last one
+            links.last().unwrap().as_str().to_string()
         };
 
         let html_link = get_link(&body["HtmlBody"].as_str().unwrap());
