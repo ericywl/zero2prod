@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use axum::{
-    extract::{Query, State},
-    http::StatusCode,
-};
+use axum::extract::{Query, State};
 use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{domain::SubscriptionStatus, startup::AppState};
+use crate::{
+    domain::{SubscriptionStatus, SubscriptionToken},
+    startup::AppState,
+};
+
+use super::handler_response::HandlerResponse;
 
 #[derive(Debug, Deserialize)]
 pub struct Parameters {
@@ -19,18 +21,31 @@ pub struct Parameters {
 pub async fn confirm(
     State(state): State<Arc<AppState>>,
     Query(params): Query<Parameters>,
-) -> StatusCode {
-    let id = match get_subscriber_id_from_token(&state.db_pool, &params.subscription_token).await {
-        Ok(id) => id,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+) -> HandlerResponse {
+    let subscription_token = match SubscriptionToken::parse(&params.subscription_token) {
+        Ok(token) => token,
+        Err(e) => {
+            tracing::error!("Failed to parse subscription token: {:?}", e);
+            return HandlerResponse::authorization_error("Invalid subscription token");
+        }
     };
 
-    match id {
-        Some(subscriber_id) => match confirm_subscriber(&state.db_pool, subscriber_id).await {
-            Ok(_) => StatusCode::OK,
-            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        },
-        None => StatusCode::UNAUTHORIZED,
+    // Get subscriber ID from token
+    let subscriber_id =
+        match get_subscriber_id_from_token(&state.db_pool, &subscription_token).await {
+            Ok(id) => id,
+            Err(_) => return HandlerResponse::server_error(),
+        };
+
+    // Token not found, return error
+    if subscriber_id.is_none() {
+        return HandlerResponse::authorization_error("Invalid subscription token");
+    }
+
+    // Confirm subscriber using retrieved ID
+    match confirm_subscriber(&state.db_pool, subscriber_id.unwrap()).await {
+        Ok(_) => HandlerResponse::ok(),
+        Err(_) => HandlerResponse::server_error(),
     }
 }
 
@@ -54,12 +69,12 @@ pub async fn confirm_subscriber(pool: &PgPool, subscriber_id: Uuid) -> Result<()
 #[tracing::instrument(name = "Get subscriber_id from token", skip(pool, subscription_token))]
 pub async fn get_subscriber_id_from_token(
     pool: &PgPool,
-    subscription_token: &str,
+    subscription_token: &SubscriptionToken,
 ) -> Result<Option<Uuid>, sqlx::Error> {
     let result = sqlx::query!(
         "SELECT subscriber_id FROM subscription_tokens \
         WHERE subscription_token = $1",
-        subscription_token,
+        subscription_token.as_str(),
     )
     .fetch_optional(pool)
     .await

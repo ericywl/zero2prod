@@ -1,19 +1,20 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Form};
+use axum::{extract::State, Form};
 use chrono::Utc;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
 use serde::Deserialize;
 use sqlx::{Postgres, Transaction};
 use thiserror::Error;
 use uuid::{NoContext, Timestamp, Uuid};
 
 use crate::domain::{
-    Email, Name, NewSubscriber, ParseEmailError, ParseNameError, SubscriptionStatus, Url,
+    Email, Name, NewSubscriber, ParseEmailError, ParseNameError, SubscriptionStatus,
+    SubscriptionToken, Url,
 };
 use crate::email_client::{EmailClient, SendEmailError};
 use crate::startup::AppState;
+
+use super::handler_response::HandlerResponse;
 
 #[derive(Debug, Error)]
 pub enum FormDataError {
@@ -51,12 +52,12 @@ impl TryFrom<FormData> for NewSubscriber {
 pub async fn subscribe(
     State(state): State<Arc<AppState>>,
     Form(data): Form<FormData>,
-) -> impl IntoResponse {
+) -> HandlerResponse {
     let new_subscriber: NewSubscriber = match data.try_into() {
         Ok(sub) => sub,
         Err(e) => {
             tracing::error!("Failed to parse new subscriber: {:?}", e);
-            return StatusCode::UNPROCESSABLE_ENTITY;
+            return HandlerResponse::parse_error("Invalid subscriber data");
         }
     };
 
@@ -65,23 +66,23 @@ pub async fn subscribe(
         Ok(tx) => tx,
         Err(e) => {
             tracing::error!("Failed to begin database transaction: {:?}", e);
-            return StatusCode::INTERNAL_SERVER_ERROR;
+            return HandlerResponse::server_error();
         }
     };
 
     // Insert subscriber into DB
     let subscriber_id = match insert_subscriber(&mut transaction, &new_subscriber).await {
         Ok(id) => id,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+        Err(_) => return HandlerResponse::server_error(),
     };
 
     // Generate and insert subscription token into DB
-    let subscription_token = generate_subscription_token();
+    let subscription_token = SubscriptionToken::generate();
     if store_token(&mut transaction, subscriber_id, &subscription_token)
         .await
         .is_err()
     {
-        return StatusCode::INTERNAL_SERVER_ERROR;
+        return HandlerResponse::server_error();
     }
 
     // Commit transaction
@@ -91,7 +92,7 @@ pub async fn subscribe(
         .inspect_err(|e| tracing::error!("Failed to commit database transaction: {:?}", e))
         .is_err()
     {
-        return StatusCode::INTERNAL_SERVER_ERROR;
+        return HandlerResponse::server_error();
     }
 
     // Send confirmation email with subscription token
@@ -104,10 +105,10 @@ pub async fn subscribe(
     .await
     .is_err()
     {
-        return StatusCode::INTERNAL_SERVER_ERROR;
+        return HandlerResponse::server_error();
     }
 
-    StatusCode::OK
+    HandlerResponse::ok()
 }
 
 #[tracing::instrument(
@@ -149,10 +150,14 @@ pub async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: &NewSubscriber,
     app_base_url: &Url,
-    subscription_token: &str,
+    subscription_token: &SubscriptionToken,
 ) -> Result<(), SendEmailError> {
+    // The confirmation link should be `<BASE_URL>/subscribe/confirm?subscription_token=<TOKEN>`
     let mut confirmation_link = app_base_url.join("subscribe/confirm").unwrap(); // safely unwrap since it's proper url
-    confirmation_link.set_query(Some(&format!("subscription_token={}", subscription_token)));
+    confirmation_link.set_query(Some(&format!(
+        "subscription_token={}",
+        subscription_token.as_str()
+    )));
 
     let html_body = format!(
         "Welcome to our newsletter!<br />\
@@ -180,12 +185,12 @@ pub async fn send_confirmation_email(
 pub async fn store_token(
     transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: Uuid,
-    subscription_token: &str,
+    subscription_token: &SubscriptionToken,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"INSERT INTO subscription_tokens (subscription_token, subscriber_id)
         VALUES ($1, $2)"#,
-        subscription_token,
+        subscription_token.as_str(),
         subscriber_id,
     )
     .execute(&mut **transaction)
@@ -196,13 +201,4 @@ pub async fn store_token(
     })?;
 
     Ok(())
-}
-
-/// Generate a random 25-characters-long case-sensitive subscription token.
-fn generate_subscription_token() -> String {
-    let mut rng = thread_rng();
-    std::iter::repeat_with(|| rng.sample(Alphanumeric))
-        .map(char::from)
-        .take(25)
-        .collect()
 }

@@ -21,8 +21,7 @@ impl Display for ParseEmailError {
 pub struct Email(String);
 
 impl Email {
-    /// Returns an instance of `Email` if the input satisfies all
-    /// our validation constraints on subscriber emails.
+    /// Returns an instance of `Email` if the input satisfies all our validation constraints on emails.
     /// It returns `ParseEmailError` otherwise.
     pub fn parse(s: String) -> Result<Email, ParseEmailError> {
         let email = Self(s.clone());

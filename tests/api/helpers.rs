@@ -115,8 +115,8 @@ impl TestApp {
         let text_link = get_link(&body["TextBody"].as_str().unwrap());
 
         ConfirmationLinks {
-            html: Url::parse(html_link).expect("Failed to parse html confirmation link."),
-            plain_text: Url::parse(text_link)
+            html: Url::parse(&html_link).expect("Failed to parse html confirmation link."),
+            plain_text: Url::parse(&text_link)
                 .expect("Failed to parse plain text confirmation link."),
         }
     }

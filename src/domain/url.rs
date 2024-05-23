@@ -20,11 +20,10 @@ impl Display for ParseUrlError {
 pub struct Url(reqwest::Url);
 
 impl Url {
-    /// Returns an instance of `Url` if the input satisfies all
-    /// our validation constraints on subscriber emails.
+    /// Returns an instance of `Url` if the input satisfies all our validation constraints on URLs.
     /// It returns `ParseUrlError` otherwise.
-    pub fn parse(s: String) -> Result<Self, ParseUrlError> {
-        match reqwest::Url::parse(&s) {
+    pub fn parse(s: &str) -> Result<Self, ParseUrlError> {
+        match reqwest::Url::parse(s) {
             Ok(url) => Ok(Self(url)),
             Err(e) => Err(ParseUrlError(e.to_string())),
         }
@@ -70,5 +69,45 @@ impl Display for Url {
 impl AsRef<str> for Url {
     fn as_ref(&self) -> &str {
         self.0.as_str()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn invalid_url_is_rejected() {
+        assert!(Url::parse("this-is-not-a-url").is_err())
+    }
+
+    #[test]
+    fn valid_url_is_parsed_successfully() {
+        assert!(Url::parse("https://some-url.com/hello").is_ok())
+    }
+
+    #[test]
+    fn url_returns_proper_host_str() {
+        let url = Url::parse("http://my-domain.com/do-something").expect("Failed to parse url.");
+        assert_eq!(url.host_str().unwrap(), "my-domain.com");
+    }
+
+    #[test]
+    fn url_returns_proper_path() {
+        let url = Url::parse("http://my-domain.com/do-something").expect("Failed to parse url.");
+        assert_eq!(url.path(), "/do-something");
+    }
+
+    #[test]
+    fn url_returns_proper_query_params() {
+        let url = Url::parse("http://some-url.co.jp/anime_character?name=sasuke&is_cool=true")
+            .expect("Failed to parse url.");
+        assert_eq!(
+            url.query_params(),
+            vec![
+                ("name".into(), "sasuke".into()),
+                ("is_cool".into(), "true".into())
+            ]
+        );
     }
 }

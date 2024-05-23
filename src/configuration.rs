@@ -64,7 +64,7 @@ impl ApplicationSettings {
     }
 
     pub fn base_url(&self) -> Result<Url, ParseUrlError> {
-        Url::parse(self.base_url.clone())
+        Url::parse(&self.base_url)
     }
 }
 
@@ -82,7 +82,7 @@ impl EmailClientSettings {
     }
 
     pub fn url(&self) -> Result<Url, ParseUrlError> {
-        Url::parse(self.base_url.clone())
+        Url::parse(&self.base_url)
     }
 
     pub fn timeout(&self) -> std::time::Duration {

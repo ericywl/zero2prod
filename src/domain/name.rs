@@ -3,8 +3,6 @@ use std::fmt::Display;
 use thiserror::Error;
 use unicode_segmentation::UnicodeSegmentation;
 
-const MAX_SUBSCRIBER_NAME_LENGTH: usize = 256;
-
 #[derive(Debug, Error)]
 pub struct ParseNameError(String);
 
@@ -23,8 +21,9 @@ impl Display for ParseNameError {
 pub struct Name(String);
 
 impl Name {
-    /// Returns an instance of `Name` if the input satisfies all
-    /// our validation constraints on subscriber names.
+    const MAX_LENGTH: usize = 256;
+
+    /// Returns an instance of `Name` if the input satisfies all our validation constraints on names.
     /// It returns `ParseNameError` otherwise.
     pub fn parse(s: String) -> Result<Name, ParseNameError> {
         // `.trim()` returns a view over the input `s` without trailing
@@ -39,7 +38,7 @@ impl Name {
         // `graphemes` returns an iterator over the graphemes in the input `s`.
         // `true` specifies that we want to use the extended grapheme definition set,
         // the recommended one.
-        let is_too_long = s.graphemes(true).count() > MAX_SUBSCRIBER_NAME_LENGTH;
+        let is_too_long = s.graphemes(true).count() > Self::MAX_LENGTH;
 
         // Iterate over all characters in the input `s` to check if any of them
         // matches one of the characters in the forbidden array.
@@ -79,13 +78,13 @@ mod test {
 
     #[test]
     fn grapheme_max_length_long_name_is_valid() {
-        let name = "ё".repeat(MAX_SUBSCRIBER_NAME_LENGTH);
+        let name = "ё".repeat(Name::MAX_LENGTH);
         assert!(Name::parse(name).is_ok())
     }
 
     #[test]
     fn name_longer_than_grapheme_max_length_is_rejected() {
-        let name = "a".repeat(MAX_SUBSCRIBER_NAME_LENGTH + 1);
+        let name = "a".repeat(Name::MAX_LENGTH + 1);
         assert!(Name::parse(name).is_err())
     }
 

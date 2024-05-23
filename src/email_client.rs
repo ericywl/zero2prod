@@ -141,7 +141,7 @@ mod test {
 
     async fn test_send_email_with_mock(mock_server: &MockServer) -> Result<(), SendEmailError> {
         let sender = Email::parse(SafeEmail().fake()).unwrap();
-        let base_url = Url::parse(mock_server.uri()).unwrap();
+        let base_url = Url::parse(&mock_server.uri()).unwrap();
         // Initialize email client
         let email_client = EmailClient::new(
             base_url,
