@@ -60,6 +60,7 @@ impl TestApp {
         }
     }
 
+    /// Send POST request to `/subscribe` with name and email.
     pub async fn post_subscriptions(
         &self,
         name: Option<String>,
@@ -74,5 +75,39 @@ impl TestApp {
         }
 
         self.server.post("/subscribe").form(&data).await
+    }
+
+    /// Send POST request to `/subscribe` with name and email.
+    /// Asserts that the response for the request is OK and extracts confirmation links
+    /// from the response body.
+    ///
+    /// Returns link extracted from HTML and plaintext body.
+    pub async fn post_subscriptions_and_extract_confirmation_link(
+        &self,
+        name: Option<String>,
+        email: Option<String>,
+    ) -> (String, String) {
+        let response = self.post_subscriptions(name, email).await;
+        response.assert_status_ok();
+
+        let email_request = &self.email_server.received_requests().await.unwrap()[0];
+        // Parse body as JSON
+        let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+        // Extract link from request fields
+        let get_link = |s: &str| {
+            let links: Vec<_> = linkify::LinkFinder::new()
+                .links(s)
+                .filter(|l| *l.kind() == linkify::LinkKind::Url)
+                .collect();
+            // There should only be 1 link for confirmation
+            assert_eq!(links.len(), 1);
+
+            links[0].as_str().to_string()
+        };
+
+        let html_link = get_link(&body["HtmlBody"].as_str().unwrap());
+        let text_link = get_link(&body["TextBody"].as_str().unwrap());
+
+        (html_link, text_link)
     }
 }

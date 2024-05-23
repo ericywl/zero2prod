@@ -7,7 +7,9 @@ use sqlx::PgPool;
 use thiserror::Error;
 use uuid::{NoContext, Timestamp, Uuid};
 
-use crate::domain::{Email, Name, NewSubscriber, ParseEmailError, ParseNameError};
+use crate::domain::{
+    Email, Name, NewSubscriber, ParseEmailError, ParseNameError, SubscriptionStatus,
+};
 use crate::email_client::{EmailClient, SendEmailError};
 use crate::startup::AppState;
 
@@ -50,7 +52,10 @@ pub async fn subscribe(
 ) -> impl IntoResponse {
     let new_subscriber: NewSubscriber = match data.try_into() {
         Ok(sub) => sub,
-        Err(_) => return StatusCode::UNPROCESSABLE_ENTITY,
+        Err(e) => {
+            tracing::error!("Failed to parse new subscriber: {:?}", e);
+            return StatusCode::UNPROCESSABLE_ENTITY;
+        }
     };
 
     // Insert subscriber to DB
@@ -62,7 +67,7 @@ pub async fn subscribe(
     }
 
     // Send email
-    if send_subscriber_email(&state.email_client, &new_subscriber)
+    if send_confirmation_email(&state.email_client, &new_subscriber)
         .await
         .is_err()
     {
@@ -89,7 +94,7 @@ pub async fn insert_subscriber(
         new_subscriber.name.as_ref(),
         new_subscriber.email.as_ref(),
         Utc::now(),
-        "confirmed",
+        SubscriptionStatus::PendingConfirmation.to_string(),
     )
     .execute(pool)
     .await
@@ -105,16 +110,26 @@ pub async fn insert_subscriber(
     name = "Sending confirmation email to new subscriber",
     skip(email_client, new_subscriber)
 )]
-pub async fn send_subscriber_email(
+pub async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: &NewSubscriber,
 ) -> Result<(), SendEmailError> {
+    let confirmation_link = "https://there-is-no-such-domain.com/subscribe/confirm";
+    let html_body = format!(
+        "Welcome to our newsletter!<br />\
+        Click <a href=\"{}\">here</a> to confirm your subscription.",
+        confirmation_link,
+    );
+    let plain_body = format!(
+        "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
+        confirmation_link
+    );
+
     email_client
-        .send_email(
-            &new_subscriber.email,
-            "Welcome!",
-            "Welcome to our newsletter!",
-            "Welcome to our newsletter!",
-        )
+        .send_email(&new_subscriber.email, "Welcome!", &html_body, &plain_body)
         .await
+        .map_err(|e| {
+            tracing::error!("Failed to send email: {:?}", e);
+            e
+        })
 }

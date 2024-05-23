@@ -1,20 +1,16 @@
 use axum::http::StatusCode;
 use sqlx::PgPool;
 use wiremock::{matchers, Mock, ResponseTemplate};
+use zero2prod::domain::SubscriptionStatus;
 
 use crate::helpers;
 
-#[cfg(test)]
 #[sqlx::test]
 async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
-    let mut connection = test_app
-        .app_state
-        .db_pool
-        .acquire()
-        .await
-        .expect("Failed to get connection from pool.");
+    let name = "Bob Banjo";
+    let email = "bob_banjo@gmail.com";
 
     Mock::given(matchers::path("/email"))
         .and(matchers::method("POST"))
@@ -24,26 +20,42 @@ async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
         .await;
 
     // Act
-    let name = "Bob Banjo";
-    let email = "bob_banjo@gmail.com";
     let response = test_app
         .post_subscriptions(Some(name.into()), Some(email.into()))
         .await;
 
     // Assert
     response.assert_status_ok();
-
-    let saved = sqlx::query!("SELECT name, email FROM subscriptions",)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("Failed to fetch saved subscription");
-    assert_eq!(saved.name, name);
-    assert_eq!(saved.email, email);
 }
 
-#[cfg(test)]
 #[sqlx::test]
-async fn subscribe_returns_400_when_data_is_missing(pool: PgPool) {
+async fn subscribe_persists_new_subscriber(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    let name = "Naruto";
+    let email = "naruto@konoha.co.jp";
+
+    // Act
+    test_app
+        .post_subscriptions(Some(name.into()), Some(email.into()))
+        .await;
+
+    // Assert
+    let saved = sqlx::query!("SELECT name, email, status FROM subscriptions",)
+        .fetch_one(&test_app.app_state.db_pool)
+        .await
+        .expect("Failed to fetch saved subscription");
+
+    assert_eq!(saved.name, name);
+    assert_eq!(saved.email, email);
+    assert_eq!(
+        saved.status,
+        SubscriptionStatus::PendingConfirmation.to_string()
+    )
+}
+
+#[sqlx::test]
+async fn subscribe_returns_422_when_data_is_missing(pool: PgPool) {
     struct TestCase {
         name: Option<String>,
         email: Option<String>,
@@ -89,9 +101,8 @@ async fn subscribe_returns_400_when_data_is_missing(pool: PgPool) {
     }
 }
 
-#[cfg(test)]
 #[sqlx::test]
-async fn subscribe_returns_400_when_fields_are_present_but_invalid(pool: PgPool) {
+async fn subscribe_returns_422_when_fields_are_present_but_invalid(pool: PgPool) {
     struct TestCase {
         name: Option<String>,
         email: Option<String>,
@@ -137,11 +148,12 @@ async fn subscribe_returns_400_when_fields_are_present_but_invalid(pool: PgPool)
     }
 }
 
-#[cfg(test)]
 #[sqlx::test]
 async fn subscribe_sends_a_confirmation_email_for_valid_data(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
+    let name = "Le Mao".to_string();
+    let email = "lemao@gmail.com".to_string();
 
     Mock::given(matchers::path("/email"))
         .and(matchers::method("POST"))
@@ -151,10 +163,33 @@ async fn subscribe_sends_a_confirmation_email_for_valid_data(pool: PgPool) {
         .await;
 
     // Act
-    let response = test_app
-        .post_subscriptions(Some("Le Mao".into()), Some("lemao@gmail.com".into()))
-        .await;
+    let response = test_app.post_subscriptions(Some(name), Some(email)).await;
 
     // Assert
     response.assert_status_ok();
+}
+
+#[sqlx::test]
+async fn subscribe_sends_confirmation_email_with_link(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    let name = "Le Mao".to_string();
+    let email = "lemao@gmail.com".to_string();
+
+    Mock::given(matchers::path("/email"))
+        .and(matchers::method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        // We are not setting an expectation here anymore
+        // The test is focused on another aspect of the app
+        // behaviour.
+        .mount(&test_app.email_server)
+        .await;
+
+    // Act
+    let (html_link, text_link) = test_app
+        .post_subscriptions_and_extract_confirmation_link(Some(name), Some(email))
+        .await;
+
+    // Assert
+    assert_eq!(html_link, text_link);
 }
