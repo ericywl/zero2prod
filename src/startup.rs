@@ -9,7 +9,11 @@ use tower_http::{
 };
 use tracing::Level;
 
-use crate::{configuration::Settings, domain::Url, email_client::EmailClient};
+use crate::{
+    configuration::{get_environment, Environment, Settings},
+    domain::Url,
+    email_client::EmailClient,
+};
 
 pub struct Application {
     address: SocketAddr,
@@ -19,11 +23,11 @@ pub struct Application {
 impl Application {
     pub fn new(addr: SocketAddr, app_state: Arc<AppState>) -> Self {
         // Build our application
-        let router = Router::new()
+        let mut router = Router::new()
             .route("/health", routing::get(routes::health_check))
             .route("/subscribe", routing::post(routes::subscribe))
             .route("/subscribe/confirm", routing::get(routes::confirm))
-            .route("/email", routing::post(routes::fake_email))
+            .route("/newsletters", routing::post(routes::publish_newsletter))
             .with_state(app_state)
             .layer(
                 TraceLayer::new_for_http()
@@ -43,6 +47,14 @@ impl Application {
                             .latency_unit(LatencyUnit::Millis),
                     ),
             );
+
+        match get_environment() {
+            Environment::Local => {
+                // Fake email server for local env
+                router = router.route("/email", routing::post(routes::fake_email))
+            }
+            _ => (),
+        }
 
         Self {
             address: addr,

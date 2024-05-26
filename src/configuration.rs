@@ -90,16 +90,20 @@ impl EmailClientSettings {
     }
 }
 
+pub fn get_environment() -> Environment {
+    // Default to `local` if unspecified.
+    std::env::var(APP_ENVIRONMENT_ENV_VAR)
+        .unwrap_or_else(|_| Environment::Local.to_string())
+        .try_into()
+        .unwrap_or_else(|_| panic!("Failed to parse {}.", APP_ENVIRONMENT_ENV_VAR))
+}
+
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let base_path = std::env::current_dir().expect("Failed to determine current directory.");
     let config_dir = base_path.join("config");
 
     // Detect the running environment.
-    // Default to `local` if unspecified.
-    let environment: Environment = std::env::var(APP_ENVIRONMENT_ENV_VAR)
-        .unwrap_or_else(|_| Environment::Local.to_string())
-        .try_into()
-        .unwrap_or_else(|_| panic!("Failed to parse {}.", APP_ENVIRONMENT_ENV_VAR));
+    let environment = get_environment();
     let environment_filename = format!("{}.yaml", environment);
 
     // Initialize configuration reader.
