@@ -1,8 +1,4 @@
-use std::fmt::Display;
-
-use thiserror::Error;
-
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub struct ParseUrlError(String);
 
 impl AsRef<str> for ParseUrlError {
@@ -11,7 +7,7 @@ impl AsRef<str> for ParseUrlError {
     }
 }
 
-impl Display for ParseUrlError {
+impl std::fmt::Display for ParseUrlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_ref())
     }
@@ -61,7 +57,7 @@ impl Url {
     }
 }
 
-impl Display for Url {
+impl std::fmt::Display for Url {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }

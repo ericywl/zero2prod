@@ -27,6 +27,9 @@ pub enum ConfirmSubscriptionError {
     #[error("Token not found")]
     TokenNotFound,
 
+    #[error("Subscription already confirmed")]
+    AlreadyConfirmed,
+
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
@@ -45,6 +48,14 @@ impl IntoResponse for ConfirmSubscriptionError {
                 (
                     StatusCode::UNAUTHORIZED,
                     "Subscription token validation error".to_string(),
+                )
+                    .into_response()
+            }
+            Self::AlreadyConfirmed => {
+                // Probably user error, ignore logging
+                (
+                    StatusCode::CONFLICT,
+                    "Subscription already confirmed".to_string(),
                 )
                     .into_response()
             }
@@ -77,6 +88,14 @@ pub async fn confirm(
     // Token not found, return error
     if subscriber_id.is_none() {
         return Err(ConfirmSubscriptionError::TokenNotFound);
+    }
+
+    // Check if subscription already confirmed
+    let status = get_subscriber_status(&state.db_pool, subscriber_id.unwrap())
+        .await
+        .context("Failed to get subscriber status")?;
+    if status == SubscriptionStatus::Confirmed {
+        return Err(ConfirmSubscriptionError::AlreadyConfirmed);
     }
 
     // Confirm subscriber using retrieved ID
@@ -114,4 +133,20 @@ async fn get_subscriber_id_from_token(
     .await?;
 
     Ok(result.map(|r| r.subscriber_id))
+}
+
+#[tracing::instrument(name = "Get subscription status", skip(pool, subscriber_id))]
+async fn get_subscriber_status(
+    pool: &PgPool,
+    subscriber_id: Uuid,
+) -> Result<SubscriptionStatus, anyhow::Error> {
+    let result = sqlx::query!(
+        "SELECT status FROM subscriptions \
+        WHERE id = $1",
+        subscriber_id,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(result.status.try_into()?)
 }

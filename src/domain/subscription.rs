@@ -1,6 +1,20 @@
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use thiserror::Error;
+
+#[derive(Debug, thiserror::Error)]
+pub struct ParseSubscriptionStatusError(String);
+
+impl AsRef<str> for ParseSubscriptionStatusError {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ParseSubscriptionStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
 
 #[derive(strum_macros::Display, PartialEq)]
 #[strum(serialize_all = "snake_case")]
@@ -10,18 +24,21 @@ pub enum SubscriptionStatus {
 }
 
 impl TryFrom<String> for SubscriptionStatus {
-    type Error = String;
+    type Error = ParseSubscriptionStatusError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         match s.to_lowercase().as_str() {
             "pending_confirmation" => Ok(Self::PendingConfirmation),
             "confirmed" => Ok(Self::Confirmed),
-            other => Err(format!("{} is not a valid subscription status", other)),
+            other => Err(ParseSubscriptionStatusError(format!(
+                "{} is not a valid subscription status",
+                other
+            ))),
         }
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParseSubscriptionTokenError {
     #[error("invalid token length")]
     InvalidLength,

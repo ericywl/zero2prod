@@ -64,6 +64,13 @@ impl TestApp {
         }
     }
 
+    pub async fn query_link_with_params(&self, link: &Url) -> TestResponse {
+        self.app_server
+            .get(link.path())
+            .add_query_params(link.query_params())
+            .await
+    }
+
     /// Send POST request to `/newsletters`.
     pub async fn post_newsletters(&self, body: serde_json::Value) -> TestResponse {
         self.app_server.post("/newsletters").json(&body).await
@@ -133,9 +140,6 @@ impl TestApp {
             .post_subscriptions_and_extract_confirmation_link(name, email)
             .await;
 
-        self.app_server
-            .get(confirmation_links.html.path())
-            .add_query_params(confirmation_links.html.query_params())
-            .await
+        self.query_link_with_params(&confirmation_links.html).await
     }
 }

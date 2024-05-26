@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use sqlx::PgPool;
 use wiremock::{matchers, Mock, ResponseTemplate};
 
@@ -26,9 +27,7 @@ async fn the_link_returned_by_subscribe_returns_ok_if_called(pool: PgPool) {
 
     // Act
     let response = test_app
-        .app_server
-        .get(html_confirmation_link.path())
-        .add_query_params(html_confirmation_link.query_params())
+        .query_link_with_params(&html_confirmation_link)
         .await;
 
     // Assert
@@ -61,9 +60,10 @@ async fn clicking_on_confirmation_link_confirms_a_subscriber(pool: PgPool) {
         .await;
 
     // Act
-    test_app
+    let response = test_app
         .post_subscriptions_and_try_confirm(Some(name.into()), Some(email.into()))
         .await;
+    response.assert_status_ok();
 
     // Assert
     let saved = sqlx::query!("SELECT name, email, status FROM subscriptions",)
@@ -78,4 +78,38 @@ async fn clicking_on_confirmation_link_confirms_a_subscriber(pool: PgPool) {
         SubscriptionStatus::Confirmed.to_string(),
         "Status not confirmed"
     )
+}
+
+#[sqlx::test]
+async fn confirm_returns_error_if_subscription_already_confirmed(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    let name = "Ayaya";
+    let email = "ayaya@gachi.com";
+
+    Mock::given(matchers::path("/email"))
+        .and(matchers::method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&test_app.email_server)
+        .await;
+
+    let confirmation_links = test_app
+        .post_subscriptions_and_extract_confirmation_link(Some(name.into()), Some(email.into()))
+        .await;
+    let html_confirmation_link = confirmation_links.html;
+    assert_eq!(html_confirmation_link.host_str().unwrap(), "127.0.0.1");
+
+    // Already confirmed once
+    let response = test_app
+        .query_link_with_params(&html_confirmation_link)
+        .await;
+    response.assert_status_ok();
+
+    // Act
+    let response = test_app
+        .query_link_with_params(&html_confirmation_link)
+        .await;
+
+    // Assert
+    response.assert_status(StatusCode::CONFLICT);
 }

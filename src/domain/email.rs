@@ -1,9 +1,6 @@
-use std::fmt::Display;
-
-use thiserror::Error;
 use validator::ValidateEmail;
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub struct ParseEmailError(String);
 
 impl AsRef<str> for ParseEmailError {
@@ -12,7 +9,7 @@ impl AsRef<str> for ParseEmailError {
     }
 }
 
-impl Display for ParseEmailError {
+impl std::fmt::Display for ParseEmailError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_ref())
     }

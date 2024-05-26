@@ -72,7 +72,7 @@ impl IntoResponse for SubscribeError {
                     .into_response()
             }
             Self::AlreadyConfirmed => {
-                // User error, ignore logging
+                // Probably user error, ignore logging
                 (
                     StatusCode::CONFLICT,
                     "Subscription already confirmed".to_string(),
@@ -188,7 +188,8 @@ async fn get_existing_subscriber(
     email: &Email,
 ) -> Result<Option<ExistingSubscriber>, anyhow::Error> {
     let result = sqlx::query!(
-        "SELECT id, name, email, status FROM subscriptions WHERE email = $1",
+        "SELECT id, name, email, status FROM subscriptions \
+        WHERE email = $1",
         email.as_ref()
     )
     .fetch_optional(&mut **transaction)
@@ -199,10 +200,7 @@ async fn get_existing_subscriber(
             id: r.id,
             name: Name::parse(&r.name)?,
             _email: Email::parse(&r.email)?,
-            status: r
-                .status
-                .try_into()
-                .map_err(|e: String| anyhow::anyhow!(e))?,
+            status: r.status.try_into()?,
         })),
         None => Ok(None),
     }
@@ -217,7 +215,8 @@ async fn get_existing_subscription_token(
     subscriber_id: Uuid,
 ) -> Result<SubscriptionToken, anyhow::Error> {
     let result = sqlx::query!(
-        "SELECT subscription_token FROM subscription_tokens WHERE subscriber_id = $1",
+        "SELECT subscription_token FROM subscription_tokens \
+        WHERE subscriber_id = $1",
         subscriber_id
     )
     .fetch_one(&mut **transaction)

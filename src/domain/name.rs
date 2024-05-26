@@ -1,9 +1,6 @@
-use std::fmt::Display;
-
-use thiserror::Error;
 use unicode_segmentation::UnicodeSegmentation;
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub struct ParseNameError(String);
 
 impl AsRef<str> for ParseNameError {
@@ -12,7 +9,7 @@ impl AsRef<str> for ParseNameError {
     }
 }
 
-impl Display for ParseNameError {
+impl std::fmt::Display for ParseNameError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_ref())
     }
