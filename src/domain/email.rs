@@ -18,13 +18,14 @@ impl Display for ParseEmailError {
     }
 }
 
+#[derive(Debug)]
 pub struct Email(String);
 
 impl Email {
     /// Returns an instance of `Email` if the input satisfies all our validation constraints on emails.
     /// It returns `ParseEmailError` otherwise.
-    pub fn parse(s: String) -> Result<Email, ParseEmailError> {
-        let email = Self(s.clone());
+    pub fn parse(s: &str) -> Result<Email, ParseEmailError> {
+        let email = Self(s.to_string());
         if !email.validate_email() {
             Err(ParseEmailError(format!(
                 "{} is not a valid subscriber email.",
@@ -33,6 +34,12 @@ impl Email {
         } else {
             Ok(email)
         }
+    }
+}
+
+impl std::fmt::Display for Email {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -74,24 +81,24 @@ mod test {
 
     #[test]
     fn empty_email_is_rejected() {
-        let email = "".to_string();
+        let email = "";
         assert!(Email::parse(email).is_err());
     }
 
     #[test]
     fn email_missing_at_symbol_is_rejected() {
-        let email = "mydomain.com".to_string();
+        let email = "mydomain.com";
         assert!(Email::parse(email).is_err());
     }
 
     #[test]
     fn email_missing_subject_is_rejected() {
-        let email = "@domain.com".to_string();
+        let email = "@domain.com";
         assert!(Email::parse(email).is_err());
     }
 
     #[quickcheck_macros::quickcheck]
     fn valid_email_is_parsed_successfully(valid_email: ValidEmailFixture) {
-        assert!(Email::parse(valid_email.0).is_ok());
+        assert!(Email::parse(&valid_email.0).is_ok());
     }
 }

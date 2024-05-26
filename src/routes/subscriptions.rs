@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Form};
 use chrono::Utc;
@@ -8,8 +6,7 @@ use sqlx::{Postgres, Transaction};
 use uuid::{NoContext, Timestamp, Uuid};
 
 use crate::domain::{
-    Email, Name, NewSubscriber, ParseEmailError, ParseNameError, SubscriptionStatus,
-    SubscriptionToken, Url,
+    Email, Name, ParseEmailError, ParseNameError, SubscriptionStatus, SubscriptionToken, Url,
 };
 use crate::email_client::{EmailClient, SendEmailError};
 use crate::startup::AppState;
@@ -30,12 +27,17 @@ pub struct FormData {
     pub email: String,
 }
 
+struct NewSubscriber {
+    name: Name,
+    email: Email,
+}
+
 impl TryFrom<FormData> for NewSubscriber {
     type Error = FormDataError;
 
     fn try_from(value: FormData) -> Result<Self, Self::Error> {
-        let name = Name::parse(value.name)?;
-        let email = Email::parse(value.email)?;
+        let name = Name::parse(&value.name)?;
+        let email = Email::parse(&value.email)?;
         Ok(Self { name, email })
     }
 }
@@ -89,7 +91,7 @@ impl IntoResponse for SubscribeError {
     )
 )]
 pub async fn subscribe(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Form(data): Form<FormData>,
 ) -> Result<(), SubscribeError> {
     let new_subscriber: NewSubscriber = data.try_into()?;
@@ -135,7 +137,7 @@ pub async fn subscribe(
     name = "Saving new subscriber details in the database",
     skip(transaction, new_subscriber)
 )]
-pub async fn insert_subscriber(
+async fn insert_subscriber(
     transaction: &mut Transaction<'_, Postgres>,
     new_subscriber: &NewSubscriber,
 ) -> Result<Uuid, sqlx::Error> {
@@ -162,7 +164,7 @@ pub async fn insert_subscriber(
     name = "Sending confirmation email to new subscriber",
     skip(email_client, new_subscriber, app_base_url, subscription_token)
 )]
-pub async fn send_confirmation_email(
+async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: &NewSubscriber,
     app_base_url: &Url,
@@ -190,7 +192,7 @@ pub async fn send_confirmation_email(
     name = "Store subscription token in the database",
     skip(transaction, subscription_token)
 )]
-pub async fn store_token(
+async fn store_token(
     transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: Uuid,
     subscription_token: &SubscriptionToken,

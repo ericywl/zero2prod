@@ -25,7 +25,7 @@ impl Name {
 
     /// Returns an instance of `Name` if the input satisfies all our validation constraints on names.
     /// It returns `ParseNameError` otherwise.
-    pub fn parse(s: String) -> Result<Name, ParseNameError> {
+    pub fn parse(s: &str) -> Result<Name, ParseNameError> {
         // `.trim()` returns a view over the input `s` without trailing
         // whitespace-like characters.
         // `.is_empty` checks if the view contains any character.
@@ -51,7 +51,7 @@ impl Name {
                 s
             )))
         } else {
-            Ok(Self(s))
+            Ok(Self(s.to_string()))
         }
     }
 
@@ -79,24 +79,24 @@ mod test {
     #[test]
     fn grapheme_max_length_long_name_is_valid() {
         let name = "ё".repeat(Name::MAX_LENGTH);
-        assert!(Name::parse(name).is_ok())
+        assert!(Name::parse(&name).is_ok())
     }
 
     #[test]
     fn name_longer_than_grapheme_max_length_is_rejected() {
         let name = "a".repeat(Name::MAX_LENGTH + 1);
-        assert!(Name::parse(name).is_err())
+        assert!(Name::parse(&name).is_err())
     }
 
     #[test]
     fn whitespace_only_name_is_rejected() {
-        let name = " ".to_string();
+        let name = " ";
         assert!(Name::parse(name).is_err())
     }
 
     #[test]
     fn empty_string_is_rejected() {
-        let name = "".to_string();
+        let name = "";
         assert!(Name::parse(name).is_err());
     }
 
@@ -104,13 +104,13 @@ mod test {
     fn name_containing_invalid_characters_is_rejected() {
         for name in &['/', '(', ')', '"', '<', '>', '\\', '{', '}'] {
             let name = name.to_string();
-            assert!(Name::parse(name).is_err());
+            assert!(Name::parse(&name).is_err());
         }
     }
 
     #[test]
     fn valid_name_is_parsed_successfully() {
-        let name = "Le Pomodoro Primo Passo".to_string();
+        let name = "Le Pomodoro Primo Passo";
         assert!(Name::parse(name).is_ok())
     }
 }

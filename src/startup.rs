@@ -21,7 +21,7 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(addr: SocketAddr, app_state: Arc<AppState>) -> Self {
+    pub fn new(addr: SocketAddr, app_state: AppState) -> Self {
         // Build our application
         let mut router = Router::new()
             .route("/health", routing::get(routes::health_check))
@@ -66,7 +66,7 @@ impl Application {
             .expect("Unable to parse socket address.");
         let app_state = default_app_state(settings, None);
 
-        Self::new(address, Arc::new(app_state))
+        Self::new(address, app_state)
     }
 
     pub async fn serve(self) -> Result<(), std::io::Error> {
@@ -80,9 +80,10 @@ impl Application {
     }
 }
 
+#[derive(Clone)]
 pub struct AppState {
-    pub db_pool: sqlx::PgPool,
-    pub email_client: EmailClient,
+    pub db_pool: Arc<sqlx::PgPool>,
+    pub email_client: Arc<EmailClient>,
     pub app_base_url: Url,
 }
 
@@ -104,8 +105,8 @@ pub fn default_app_state(settings: &Settings, overwrite_db_pool: Option<sqlx::Pg
         .expect("Failed to parse application base url.");
 
     AppState {
-        db_pool,
-        email_client,
+        db_pool: Arc::new(db_pool),
+        email_client: Arc::new(email_client),
         app_base_url,
     }
 }

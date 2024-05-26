@@ -78,7 +78,7 @@ pub struct EmailClientSettings {
 
 impl EmailClientSettings {
     pub fn sender(&self) -> Result<Email, ParseEmailError> {
-        Email::parse(self.sender_email.clone())
+        Email::parse(&self.sender_email)
     }
 
     pub fn url(&self) -> Result<Url, ParseUrlError> {

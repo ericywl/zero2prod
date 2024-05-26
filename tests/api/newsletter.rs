@@ -1,7 +1,41 @@
+use axum::http::StatusCode;
 use sqlx::PgPool;
 use wiremock::{matchers, Mock, ResponseTemplate};
 
 use crate::helpers;
+
+#[sqlx::test]
+async fn newsletters_returns_error_for_invalid_data(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    let test_cases = vec![
+        (
+            serde_json::json!({
+            "content": {
+                "text": "Newsletter body as plain text",
+                "html": "<p>Newsletter body as HTML</p>",
+            }
+            }),
+            "missing title",
+        ),
+        (
+            serde_json::json!({"title": "Newsletter!"}),
+            "missing content",
+        ),
+    ];
+
+    for (invalid_body, error_message) in test_cases {
+        let response = test_app.post_newsletters(invalid_body).await;
+
+        // Assert
+        assert_eq!(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            response.status_code(),
+            "The API did not fail when the payload was {}.",
+            error_message
+        );
+    }
+}
 
 #[sqlx::test]
 async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) {
@@ -24,11 +58,7 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) 
             "html": "<p>Newsletter body as HTML</p>",
         }
     });
-    let response = test_app
-        .app_server
-        .post("/newsletters")
-        .json(&newsletter_request_body)
-        .await;
+    let response = test_app.post_newsletters(newsletter_request_body).await;
 
     // Assert
     response.assert_status_ok();
@@ -56,11 +86,7 @@ async fn newsletters_are_delivered_to_confirmed_subscribers(pool: PgPool) {
             "html": "<p>Newsletter body as HTML</p>",
         }
     });
-    let response = test_app
-        .app_server
-        .post("/newsletters")
-        .json(&newsletter_request_body)
-        .await;
+    let response = test_app.post_newsletters(newsletter_request_body).await;
 
     // Assert
     response.assert_status_ok();
@@ -81,6 +107,7 @@ async fn create_subscriber(test_app: &helpers::TestApp, confirm: bool) {
     let name = Some("naruto".into());
     let email = Some("naruto@gmail.come".into());
 
+    // Whether to confirm the subscriber or not
     if confirm {
         test_app
             .post_subscriptions_and_try_confirm(name, email)

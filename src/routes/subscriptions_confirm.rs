@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use axum::{
     extract::{Query, State},
@@ -66,7 +64,7 @@ impl IntoResponse for ConfirmSubscriptionError {
 
 #[tracing::instrument(name = "Confirm a pending subscriber", skip(state, params))]
 pub async fn confirm(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Query(params): Query<Parameters>,
 ) -> Result<(), ConfirmSubscriptionError> {
     let subscription_token = SubscriptionToken::parse(&params.subscription_token)?;
@@ -90,7 +88,7 @@ pub async fn confirm(
 }
 
 #[tracing::instrument(name = "Mark subscriber as confirmed", skip(pool, subscriber_id))]
-pub async fn confirm_subscriber(pool: &PgPool, subscriber_id: Uuid) -> Result<(), sqlx::Error> {
+async fn confirm_subscriber(pool: &PgPool, subscriber_id: Uuid) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"UPDATE subscriptions SET status = $1 WHERE id = $2"#,
         SubscriptionStatus::Confirmed.to_string(),
@@ -103,7 +101,7 @@ pub async fn confirm_subscriber(pool: &PgPool, subscriber_id: Uuid) -> Result<()
 }
 
 #[tracing::instrument(name = "Get subscriber_id from token", skip(pool, subscription_token))]
-pub async fn get_subscriber_id_from_token(
+async fn get_subscriber_id_from_token(
     pool: &PgPool,
     subscription_token: &SubscriptionToken,
 ) -> Result<Option<Uuid>, sqlx::Error> {

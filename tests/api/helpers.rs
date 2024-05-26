@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum_test::{TestResponse, TestServer};
 use once_cell::sync::Lazy;
 use sqlx::PgPool;
@@ -32,7 +30,7 @@ pub struct ConfirmationLinks {
 
 pub struct TestApp {
     pub app_server: TestServer,
-    pub app_state: Arc<AppState>,
+    pub app_state: AppState,
     pub email_server: MockServer,
 }
 
@@ -50,7 +48,7 @@ impl TestApp {
             c
         };
 
-        let app_state = Arc::new(default_app_state(&config, Some(pool)));
+        let app_state = default_app_state(&config, Some(pool));
         let address = config
             .application
             .address()
@@ -64,6 +62,11 @@ impl TestApp {
             app_state,
             email_server,
         }
+    }
+
+    /// Send POST request to `/newsletters`.
+    pub async fn post_newsletters(&self, body: serde_json::Value) -> TestResponse {
+        self.app_server.post("/newsletters").json(&body).await
     }
 
     /// Send POST request to `/subscribe` with name and email.

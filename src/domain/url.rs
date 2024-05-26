@@ -17,6 +17,7 @@ impl Display for ParseUrlError {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Url(reqwest::Url);
 
 impl Url {

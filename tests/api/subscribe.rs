@@ -6,7 +6,7 @@ use zero2prod::domain::SubscriptionStatus;
 use crate::helpers;
 
 #[sqlx::test]
-async fn subscribe_returns_200_for_valid_form_data(pool: PgPool) {
+async fn subscribe_returns_ok_for_valid_form_data(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
     let name = "Bob Banjo";
@@ -42,7 +42,7 @@ async fn subscribe_persists_new_subscriber(pool: PgPool) {
 
     // Assert
     let saved = sqlx::query!("SELECT name, email, status FROM subscriptions",)
-        .fetch_one(&test_app.app_state.db_pool)
+        .fetch_one(&*test_app.app_state.db_pool)
         .await
         .expect("Failed to fetch saved subscription");
 
@@ -56,7 +56,7 @@ async fn subscribe_persists_new_subscriber(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn subscribe_returns_422_when_data_is_missing(pool: PgPool) {
+async fn subscribe_returns_error_when_data_is_missing(pool: PgPool) {
     struct TestCase {
         name: Option<String>,
         email: Option<String>,
@@ -103,7 +103,7 @@ async fn subscribe_returns_422_when_data_is_missing(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn subscribe_returns_422_when_fields_are_present_but_invalid(pool: PgPool) {
+async fn subscribe_returns_error_when_fields_are_present_but_invalid(pool: PgPool) {
     struct TestCase {
         name: Option<String>,
         email: Option<String>,
@@ -205,7 +205,7 @@ async fn subscribe_fails_if_there_is_a_fatal_database_error(pool: PgPool) {
     let test_app = helpers::TestApp::setup(pool).await;
     // Sabotage the database
     sqlx::query!("ALTER TABLE subscription_tokens DROP COLUMN subscription_token;",)
-        .execute(&test_app.app_state.db_pool)
+        .execute(&*test_app.app_state.db_pool)
         .await
         .unwrap();
 

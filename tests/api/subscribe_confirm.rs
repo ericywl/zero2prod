@@ -5,7 +5,7 @@ use crate::helpers;
 use zero2prod::domain::SubscriptionStatus;
 
 #[sqlx::test]
-async fn the_link_returned_by_subscribe_returns_200_if_called(pool: PgPool) {
+async fn the_link_returned_by_subscribe_returns_ok_if_called(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
     let name = "Adaya";
@@ -36,7 +36,7 @@ async fn the_link_returned_by_subscribe_returns_200_if_called(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn confirmation_without_token_are_rejected_with_400(pool: PgPool) {
+async fn confirmation_without_token_are_rejected_with_error(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
 
@@ -67,7 +67,7 @@ async fn clicking_on_confirmation_link_confirms_a_subscriber(pool: PgPool) {
 
     // Assert
     let saved = sqlx::query!("SELECT name, email, status FROM subscriptions",)
-        .fetch_one(&test_app.app_state.db_pool)
+        .fetch_one(&*test_app.app_state.db_pool)
         .await
         .expect("Failed to fetch saved subscription.");
 
