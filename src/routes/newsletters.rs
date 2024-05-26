@@ -1,7 +1,15 @@
 use anyhow::Context;
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::State,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::IntoResponse,
+    Json,
+};
+use base64::Engine;
+use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 use crate::domain::{Email, SubscriptionStatus};
 use crate::startup::AppState;
@@ -25,6 +33,9 @@ pub struct Content {
 
 #[derive(thiserror::Error)]
 pub enum PublishError {
+    #[error("Authentication failed")]
+    AuthenticationError(#[source] anyhow::Error),
+
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
@@ -38,6 +49,20 @@ impl std::fmt::Debug for PublishError {
 impl IntoResponse for PublishError {
     fn into_response(self) -> axum::response::Response {
         match self {
+            Self::AuthenticationError(_) => {
+                // Auth error, ignore logging
+                let mut response = (
+                    StatusCode::UNAUTHORIZED,
+                    "Authentication failed".to_string(),
+                )
+                    .into_response();
+
+                let header_value = HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
+                response
+                    .headers_mut()
+                    .insert(header::WWW_AUTHENTICATE, header_value);
+                response
+            }
             Self::UnexpectedError(e) => {
                 // Log unexpected error
                 tracing::error!("{:?}", e);
@@ -54,8 +79,15 @@ impl IntoResponse for PublishError {
 
 pub async fn publish_newsletter(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<BodyData>,
 ) -> Result<(), PublishError> {
+    let credentials = basic_authentication(&headers).map_err(PublishError::AuthenticationError)?;
+    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
+
+    let user_id = validate_credentials(&state.db_pool, &credentials).await?;
+    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
+
     let subscribers = get_confirmed_subscribers(&state.db_pool)
         .await
         .context("Failed to get confirmed subscribers from the database")?;
@@ -122,4 +154,61 @@ async fn get_confirmed_subscribers(
         .collect();
 
     Ok(confirmed_subscribers)
+}
+
+struct Credentials {
+    username: String,
+    password: Secret<String>,
+}
+
+fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
+    let header_value = headers
+        .get("Authorization")
+        .context("The 'Authorization' header was missing")?
+        .to_str()
+        .context("The 'Authorization' header was not a valid UTF-8 string")?;
+    let base64_segment = header_value
+        .strip_prefix("Basic ")
+        .context("The authorization scheme was not 'Basic'")?;
+    let decoded_bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64_segment)
+        .context("Failed to decode base64 'Basic' credentials")?;
+    let decoded_credentials = String::from_utf8(decoded_bytes)
+        .context("The decoded credential string is not valid UTF-8")?;
+
+    let mut credentials = decoded_credentials.splitn(2, ":");
+    let username = credentials
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'Basic' auth."))?
+        .to_string();
+    let password = credentials
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'Basic' auth."))?
+        .to_string();
+
+    Ok(Credentials {
+        username,
+        password: Secret::new(password),
+    })
+}
+
+async fn validate_credentials(
+    pool: &PgPool,
+    credentials: &Credentials,
+) -> Result<Uuid, PublishError> {
+    let user_id: Option<_> = sqlx::query!(
+        r#"SELECT user_id FROM users
+        WHERE username = $1 AND password = $2"#,
+        credentials.username,
+        credentials.password.expose_secret()
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed to perform query to validate auth credentials")
+    .map_err(PublishError::UnexpectedError)?;
+
+    user_id
+        .map(|r| r.user_id)
+        .ok_or_else(|| anyhow::anyhow!("Invalid username or password"))
+        .map_err(PublishError::AuthenticationError)
 }

@@ -1,7 +1,10 @@
+use axum::http::{header, HeaderValue};
 use axum_test::{TestResponse, TestServer};
+use base64::Engine;
 use once_cell::sync::Lazy;
 use sqlx::PgPool;
 
+use uuid::Uuid;
 use wiremock::MockServer;
 use zero2prod::{
     configuration::get_configuration,
@@ -22,6 +25,19 @@ static TRACING: Lazy<()> = Lazy::new(|| {
         init_subscriber(subscriber);
     }
 });
+
+async fn add_test_user(pool: &PgPool) {
+    sqlx::query!(
+        "INSERT INTO users (user_id, username, password)
+        VALUES ($1, $2, $3)",
+        Uuid::new_v4(),
+        Uuid::new_v4().to_string(),
+        Uuid::new_v4().to_string(),
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to create test users.");
+}
 
 pub struct ConfirmationLinks {
     pub html: Url,
@@ -57,11 +73,22 @@ impl TestApp {
         let app = zero2prod::startup::Application::new(address, app_state.clone());
         let app_server = TestServer::new(app.router()).expect("Failed to spawn test server");
 
+        // Setup test user
+        add_test_user(&app_state.db_pool.clone()).await;
+
         Self {
             app_server,
             app_state,
             email_server,
         }
+    }
+
+    pub async fn test_user(&self) -> (String, String) {
+        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1",)
+            .fetch_one(&*self.app_state.db_pool.clone())
+            .await
+            .expect("Failed to create test users.");
+        (row.username, row.password)
     }
 
     pub async fn query_link_with_params(&self, link: &Url) -> TestResponse {
@@ -73,7 +100,16 @@ impl TestApp {
 
     /// Send POST request to `/newsletters`.
     pub async fn post_newsletters(&self, body: serde_json::Value) -> TestResponse {
-        self.app_server.post("/newsletters").json(&body).await
+        let (username, password) = self.test_user().await;
+        let basic_auth =
+            base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", username, password));
+        let header_value = HeaderValue::from_str(&format!("Basic {}", basic_auth)).unwrap();
+
+        self.app_server
+            .post("/newsletters")
+            .add_header(header::AUTHORIZATION, header_value)
+            .json(&body)
+            .await
     }
 
     /// Send POST request to `/subscribe` with name and email.

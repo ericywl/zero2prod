@@ -39,6 +39,8 @@ unicode-segmentation = "1.11.0"
 validator = "0.18.1"
 lazy_static = "1.4.0"
 anyhow = "1.0.86"
+base64 = "0.22.1"
+sha3 = "0.10.8"
 
 [dependencies.chrono]
 version = "0.4"
