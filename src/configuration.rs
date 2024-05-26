@@ -132,12 +132,13 @@ pub enum Environment {
 
 impl TryFrom<String> for Environment {
     type Error = String;
+
     fn try_from(s: String) -> Result<Self, Self::Error> {
         match s.to_lowercase().as_str() {
             "local" => Ok(Self::Local),
             "production" => Ok(Self::Production),
             other => Err(format!(
-                "{} is not a supported environment. Use either `local` or `production`.",
+                "{} is not a supported environment, use either `local` or `production`",
                 other
             )),
         }

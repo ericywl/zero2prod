@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use sqlx::PgPool;
 use wiremock::{matchers, Mock, ResponseTemplate};
-use zero2prod::domain::SubscriptionStatus;
+use zero2prod::domain::{SubscriptionStatus, Url};
 
 use crate::helpers;
 
@@ -194,9 +194,84 @@ async fn subscribe_sends_confirmation_email_with_link(pool: PgPool) {
     // Assert
     assert_eq!(
         confirmation_links.html.as_str(),
-        confirmation_links.plain_text.as_ref(),
+        confirmation_links.plain_text.as_str(),
         "HTML and plain text confirmation links not equal"
     );
+}
+
+#[sqlx::test]
+async fn subscribe_sends_two_identical_confirmation_emails_if_called_twice(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    let name = "Le Mao".to_string();
+    let email = "lemao@gmail.com".to_string();
+
+    // Act
+    let first_html_link: Url;
+    let second_html_link: Url;
+
+    {
+        let _mock_guard = Mock::given(matchers::path("/email"))
+            .and(matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount_as_scoped(&test_app.email_server)
+            .await;
+
+        let confirmation_links = test_app
+            .post_subscriptions_and_extract_confirmation_link(
+                Some(name.clone()),
+                Some(email.clone()),
+            )
+            .await;
+        first_html_link = confirmation_links.html.clone();
+    }
+
+    {
+        let _mock_guard = Mock::given(matchers::path("/email"))
+            .and(matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount_as_scoped(&test_app.email_server)
+            .await;
+
+        let confirmation_links = test_app
+            .post_subscriptions_and_extract_confirmation_link(
+                Some(name.clone()),
+                Some(email.clone()),
+            )
+            .await;
+        second_html_link = confirmation_links.html.clone();
+    }
+
+    assert_eq!(
+        first_html_link.as_str(),
+        second_html_link.as_str(),
+        "HTML links from 2 separate"
+    )
+}
+
+#[sqlx::test]
+async fn subscribe_returns_error_if_subscription_already_confirmed(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    let name = "Le Mao".to_string();
+    let email = "lemao@gmail.com".to_string();
+
+    Mock::given(matchers::path("/email"))
+        .and(matchers::method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&test_app.email_server)
+        .await;
+
+    let response = test_app
+        .post_subscriptions_and_try_confirm(Some(name.clone()), Some(email.clone()))
+        .await;
+    response.assert_status_ok();
+
+    // Act
+    let response = test_app.post_subscriptions(Some(name), Some(email)).await;
+    response.assert_status(StatusCode::CONFLICT);
 }
 
 #[sqlx::test]

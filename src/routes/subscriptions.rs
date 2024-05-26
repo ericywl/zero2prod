@@ -47,6 +47,9 @@ pub enum SubscribeError {
     #[error("{0}")]
     FormValidationError(#[from] FormDataError),
 
+    #[error("subscription already confirmed")]
+    AlreadyConfirmed,
+
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
@@ -65,6 +68,14 @@ impl IntoResponse for SubscribeError {
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
                     "New subscriber form validation error".to_string(),
+                )
+                    .into_response()
+            }
+            Self::AlreadyConfirmed => {
+                // User error, ignore logging
+                (
+                    StatusCode::CONFLICT,
+                    "Subscription already confirmed".to_string(),
                 )
                     .into_response()
             }
@@ -95,6 +106,7 @@ pub async fn subscribe(
     Form(data): Form<FormData>,
 ) -> Result<(), SubscribeError> {
     let new_subscriber: NewSubscriber = data.try_into()?;
+    let subscription_token: SubscriptionToken;
 
     // Begin transaction
     let mut transaction = state
@@ -103,34 +115,104 @@ pub async fn subscribe(
         .await
         .context("Failed to acquirre Postgres connection from the pool")?;
 
-    // Insert subscriber into DB
-    let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
+    // Try to get existing subscriber from DB
+    let existing_subscriber = get_existing_subscriber(&mut transaction, &new_subscriber.email)
         .await
-        .context("Failed to insert new subscriber into the database")?;
+        .context("Failed to get existing subscriber from the database")?;
 
-    // Generate and insert subscription token into DB
-    let subscription_token = SubscriptionToken::generate();
-    store_token(&mut transaction, subscriber_id, &subscription_token)
-        .await
-        .context("Failed to store the confirmation token for a new subscriber")?;
+    match existing_subscriber {
+        Some(subscriber) => {
+            // Subscription status already confirmed, return error
+            if subscriber.status == SubscriptionStatus::Confirmed {
+                return Err(SubscribeError::AlreadyConfirmed);
+            }
+            // Get existing subscription token
+            subscription_token = get_existing_subscription_token(&mut transaction, subscriber.id)
+                .await
+                .context("Failed to get existing subscription token from the database")?;
+        }
+        None => {
+            // Insert new subscriber into DB
+            let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
+                .await
+                .context("Failed to insert new subscriber into the database")?;
 
-    // Commit transaction
-    transaction
-        .commit()
-        .await
-        .context("Failed to commit SQL transaction to store a new subscriber")?;
+            // Generate and insert subscription token into DB
+            subscription_token = SubscriptionToken::generate();
+            store_token(&mut transaction, subscriber_id, &subscription_token)
+                .await
+                .context("Failed to store the confirmation token for a new subscriber")?;
+
+            // Commit transaction
+            transaction
+                .commit()
+                .await
+                .context("Failed to commit SQL transaction to store a new subscriber")?;
+        }
+    }
 
     // Send confirmation email with subscription token
     send_confirmation_email(
         &state.email_client,
-        &new_subscriber,
+        &new_subscriber.email,
         &state.app_base_url,
         &subscription_token,
     )
     .await
-    .context("Failed to send a confirmation email")?;
+    .context("Failed to send a new confirmation email")?;
 
     Ok(())
+}
+
+struct ExistingSubscriber {
+    id: uuid::Uuid,
+    _name: Name,
+    _email: Email,
+    status: SubscriptionStatus,
+}
+
+#[tracing::instrument(name = "Get existing subscriber using email", skip(transaction, email))]
+async fn get_existing_subscriber(
+    transaction: &mut Transaction<'_, Postgres>,
+    email: &Email,
+) -> Result<Option<ExistingSubscriber>, anyhow::Error> {
+    let result = sqlx::query!(
+        "SELECT id, name, email, status FROM subscriptions WHERE email = $1",
+        email.as_ref()
+    )
+    .fetch_optional(&mut **transaction)
+    .await?;
+
+    match result {
+        Some(r) => Ok(Some(ExistingSubscriber {
+            id: r.id,
+            _name: Name::parse(&r.name)?,
+            _email: Email::parse(&r.email)?,
+            status: r
+                .status
+                .try_into()
+                .map_err(|e: String| anyhow::anyhow!(e))?,
+        })),
+        None => Ok(None),
+    }
+}
+
+#[tracing::instrument(
+    name = "Get existing token using subscriber id",
+    skip(transaction, subscriber_id)
+)]
+async fn get_existing_subscription_token(
+    transaction: &mut Transaction<'_, Postgres>,
+    subscriber_id: Uuid,
+) -> Result<SubscriptionToken, anyhow::Error> {
+    let result = sqlx::query!(
+        "SELECT subscription_token FROM subscription_tokens WHERE subscriber_id = $1",
+        subscriber_id
+    )
+    .fetch_one(&mut **transaction)
+    .await?;
+
+    Ok(SubscriptionToken::parse(&result.subscription_token)?)
 }
 
 #[tracing::instrument(
@@ -145,9 +227,9 @@ async fn insert_subscriber(
 
     sqlx::query!(
         r#"
-            INSERT INTO subscriptions (id, name, email, subscribed_at, status)
-            VALUES ($1, $2, $3, $4, $5)
-            "#,
+        INSERT INTO subscriptions (id, name, email, subscribed_at, status)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
         subscriber_id,
         new_subscriber.name.as_ref(),
         new_subscriber.email.as_ref(),
@@ -162,11 +244,11 @@ async fn insert_subscriber(
 
 #[tracing::instrument(
     name = "Sending confirmation email to new subscriber",
-    skip(email_client, new_subscriber, app_base_url, subscription_token)
+    skip(email_client, subscriber_email, app_base_url, subscription_token)
 )]
 async fn send_confirmation_email(
     email_client: &EmailClient,
-    new_subscriber: &NewSubscriber,
+    subscriber_email: &Email,
     app_base_url: &Url,
     subscription_token: &SubscriptionToken,
 ) -> Result<(), SendEmailError> {
@@ -184,7 +266,7 @@ async fn send_confirmation_email(
     );
 
     email_client
-        .send_email(&new_subscriber.email, "Welcome!", &html_body, &plain_body)
+        .send_email(subscriber_email, "Welcome!", &html_body, &plain_body)
         .await
 }
 
@@ -198,8 +280,10 @@ async fn store_token(
     subscription_token: &SubscriptionToken,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
-        r#"INSERT INTO subscription_tokens (subscription_token, subscriber_id)
-        VALUES ($1, $2)"#,
+        r#"
+        INSERT INTO subscription_tokens (subscription_token, subscriber_id)
+        VALUES ($1, $2)
+        "#,
         subscription_token.as_str(),
         subscriber_id,
     )

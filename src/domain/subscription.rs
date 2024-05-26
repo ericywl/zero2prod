@@ -2,11 +2,23 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use thiserror::Error;
 
-#[derive(strum_macros::Display)]
+#[derive(strum_macros::Display, PartialEq)]
 #[strum(serialize_all = "snake_case")]
 pub enum SubscriptionStatus {
     PendingConfirmation,
     Confirmed,
+}
+
+impl TryFrom<String> for SubscriptionStatus {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        match s.to_lowercase().as_str() {
+            "pending_confirmation" => Ok(Self::PendingConfirmation),
+            "confirmed" => Ok(Self::Confirmed),
+            other => Err(format!("{} is not a valid subscription status", other)),
+        }
+    }
 }
 
 #[derive(Debug, Error)]
