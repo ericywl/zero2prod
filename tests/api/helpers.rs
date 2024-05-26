@@ -2,6 +2,7 @@ use axum::http::{header, HeaderValue};
 use axum_test::{TestResponse, TestServer};
 use base64::Engine;
 use once_cell::sync::Lazy;
+use sha3::Digest;
 use sqlx::PgPool;
 
 use uuid::Uuid;
@@ -26,17 +27,35 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     }
 });
 
-async fn add_test_user(pool: &PgPool) {
-    sqlx::query!(
-        "INSERT INTO users (user_id, username, password)
-        VALUES ($1, $2, $3)",
-        Uuid::new_v4(),
-        Uuid::new_v4().to_string(),
-        Uuid::new_v4().to_string(),
-    )
-    .execute(pool)
-    .await
-    .expect("Failed to create test users.");
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub password: String,
+}
+
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+
+    async fn store(&self, pool: &PgPool) {
+        let password_hash = sha3::Sha3_256::digest(self.password.as_bytes());
+        let password_hash = format!("{:x}", password_hash);
+        sqlx::query!(
+            "INSERT INTO users (user_id, username, password_hash)
+            VALUES ($1, $2, $3)",
+            self.user_id,
+            self.username,
+            password_hash
+        )
+        .execute(pool)
+        .await
+        .expect("Failed to create test users.");
+    }
 }
 
 pub struct ConfirmationLinks {
@@ -48,6 +67,7 @@ pub struct TestApp {
     pub app_server: TestServer,
     pub app_state: AppState,
     pub email_server: MockServer,
+    test_user: TestUser,
 }
 
 impl TestApp {
@@ -74,21 +94,15 @@ impl TestApp {
         let app_server = TestServer::new(app.router()).expect("Failed to spawn test server");
 
         // Setup test user
-        add_test_user(&app_state.db_pool.clone()).await;
+        let test_user = TestUser::generate();
+        test_user.store(&app_state.db_pool.clone()).await;
 
         Self {
             app_server,
             app_state,
             email_server,
+            test_user,
         }
-    }
-
-    pub async fn test_user(&self) -> (String, String) {
-        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1",)
-            .fetch_one(&*self.app_state.db_pool.clone())
-            .await
-            .expect("Failed to create test users.");
-        (row.username, row.password)
     }
 
     pub async fn query_link_with_params(&self, link: &Url) -> TestResponse {
@@ -100,9 +114,10 @@ impl TestApp {
 
     /// Send POST request to `/newsletters`.
     pub async fn post_newsletters(&self, body: serde_json::Value) -> TestResponse {
-        let (username, password) = self.test_user().await;
-        let basic_auth =
-            base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", username, password));
+        let basic_auth = base64::engine::general_purpose::STANDARD.encode(format!(
+            "{}:{}",
+            self.test_user.username, self.test_user.password
+        ));
         let header_value = HeaderValue::from_str(&format!("Basic {}", basic_auth)).unwrap();
 
         self.app_server
