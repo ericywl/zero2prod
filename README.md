@@ -16,7 +16,7 @@ So that I can receive email updates when new content is published on the blog.
 
 ```
 As the blog author,
-I want to send an email to all my subscribers,
+I want to send an email to all my confirmed subscribers,
 So that I can notify them when new content is published.
 ```
 

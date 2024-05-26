@@ -1,52 +1,92 @@
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use anyhow::Context;
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
 use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    domain::{SubscriptionStatus, SubscriptionToken},
+    domain::{ParseSubscriptionTokenError, SubscriptionStatus, SubscriptionToken},
     startup::AppState,
+    telemetry,
 };
-
-use super::handler_response::HandlerResponse;
 
 #[derive(Debug, Deserialize)]
 pub struct Parameters {
     subscription_token: String,
 }
 
+#[derive(thiserror::Error)]
+pub enum ConfirmSubscriptionError {
+    #[error("{0}")]
+    TokenValidationError(#[from] ParseSubscriptionTokenError),
+
+    #[error("Token not found")]
+    TokenNotFound,
+
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+
+impl std::fmt::Debug for ConfirmSubscriptionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        telemetry::error_chain_fmt(self, f)
+    }
+}
+
+impl IntoResponse for ConfirmSubscriptionError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::TokenValidationError(_) | Self::TokenNotFound => {
+                // User error, ignore logging
+                (
+                    StatusCode::UNAUTHORIZED,
+                    "Subscription token validation error".to_string(),
+                )
+                    .into_response()
+            }
+            Self::UnexpectedError(e) => {
+                // Log unexpected error
+                tracing::error!("{:?}", e);
+
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Something went wrong with subscription".to_string(),
+                )
+                    .into_response()
+            }
+        }
+    }
+}
+
 #[tracing::instrument(name = "Confirm a pending subscriber", skip(state, params))]
 pub async fn confirm(
     State(state): State<Arc<AppState>>,
     Query(params): Query<Parameters>,
-) -> HandlerResponse {
-    let subscription_token = match SubscriptionToken::parse(&params.subscription_token) {
-        Ok(token) => token,
-        Err(e) => {
-            tracing::error!("Failed to parse subscription token: {:?}", e);
-            return HandlerResponse::authorization_error("Invalid subscription token");
-        }
-    };
+) -> Result<(), ConfirmSubscriptionError> {
+    let subscription_token = SubscriptionToken::parse(&params.subscription_token)?;
 
     // Get subscriber ID from token
-    let subscriber_id =
-        match get_subscriber_id_from_token(&state.db_pool, &subscription_token).await {
-            Ok(id) => id,
-            Err(_) => return HandlerResponse::server_error(),
-        };
+    let subscriber_id = get_subscriber_id_from_token(&state.db_pool, &subscription_token)
+        .await
+        .context("Failed to get subscriber_id associated with the provided token")?;
 
     // Token not found, return error
     if subscriber_id.is_none() {
-        return HandlerResponse::authorization_error("Invalid subscription token");
+        return Err(ConfirmSubscriptionError::TokenNotFound);
     }
 
     // Confirm subscriber using retrieved ID
-    match confirm_subscriber(&state.db_pool, subscriber_id.unwrap()).await {
-        Ok(_) => HandlerResponse::ok(),
-        Err(_) => HandlerResponse::server_error(),
-    }
+    confirm_subscriber(&state.db_pool, subscriber_id.unwrap())
+        .await
+        .context("Failed to confirm subscriber in the database")?;
+
+    Ok(())
 }
 
 #[tracing::instrument(name = "Mark subscriber as confirmed", skip(pool, subscriber_id))]
@@ -57,11 +97,7 @@ pub async fn confirm_subscriber(pool: &PgPool, subscriber_id: Uuid) -> Result<()
         subscriber_id,
     )
     .execute(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .await?;
 
     Ok(())
 }
@@ -77,11 +113,7 @@ pub async fn get_subscriber_id_from_token(
         subscription_token.as_str(),
     )
     .fetch_optional(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .await?;
 
     Ok(result.map(|r| r.subscriber_id))
 }

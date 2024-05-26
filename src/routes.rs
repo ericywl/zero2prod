@@ -1,5 +1,4 @@
 mod email;
-mod handler_response;
 mod health_check;
 mod subscriptions;
 mod subscriptions_confirm;

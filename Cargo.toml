@@ -13,7 +13,7 @@ path = "src/main.rs"
 name = "zero2prod"
 
 [dependencies]
-axum = "0.7.5"
+axum = { version = "0.7.5", features = ["macros"] }
 axum-test = "14.9.1"
 config = "0.14.0"
 rand = { version = "0.8.5", features = ["std_rng"] }
@@ -38,6 +38,7 @@ uuid = { version = "1", features = ["v4", "v7"] }
 unicode-segmentation = "1.11.0"
 validator = "0.18.1"
 lazy_static = "1.4.0"
+anyhow = "1.0.86"
 
 [dependencies.chrono]
 version = "0.4"

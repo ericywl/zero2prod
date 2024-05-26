@@ -198,3 +198,25 @@ async fn subscribe_sends_confirmation_email_with_link(pool: PgPool) {
         "HTML and plain text confirmation links not equal"
     );
 }
+
+#[sqlx::test]
+async fn subscribe_fails_if_there_is_a_fatal_database_error(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    // Sabotage the database
+    sqlx::query!("ALTER TABLE subscription_tokens DROP COLUMN subscription_token;",)
+        .execute(&test_app.app_state.db_pool)
+        .await
+        .unwrap();
+
+    // Act
+    let response = test_app
+        .post_subscriptions(
+            Some("le guin".into()),
+            Some("ursula_le_guin@gmail.com".into()),
+        )
+        .await;
+
+    // Assert
+    response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+}

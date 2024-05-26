@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use axum::{extract::State, Form};
+use anyhow::Context;
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Form};
 use chrono::Utc;
 use serde::Deserialize;
 use sqlx::{Postgres, Transaction};
-use thiserror::Error;
 use uuid::{NoContext, Timestamp, Uuid};
 
 use crate::domain::{
@@ -13,11 +13,9 @@ use crate::domain::{
 };
 use crate::email_client::{EmailClient, SendEmailError};
 use crate::startup::AppState;
-use crate::template;
+use crate::{telemetry, template};
 
-use super::handler_response::HandlerResponse;
-
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum FormDataError {
     #[error(transparent)]
     ParseName(#[from] ParseNameError),
@@ -42,6 +40,46 @@ impl TryFrom<FormData> for NewSubscriber {
     }
 }
 
+#[derive(thiserror::Error)]
+pub enum SubscribeError {
+    #[error("{0}")]
+    FormValidationError(#[from] FormDataError),
+
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+
+impl std::fmt::Debug for SubscribeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        telemetry::error_chain_fmt(self, f)
+    }
+}
+
+impl IntoResponse for SubscribeError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::FormValidationError(_) => {
+                // User error, ignore logging
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "New subscriber form validation error".to_string(),
+                )
+                    .into_response()
+            }
+            Self::UnexpectedError(e) => {
+                // Log unexpected error
+                tracing::error!("{:?}", e);
+
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Something went wrong with subscription".to_string(),
+                )
+                    .into_response()
+            }
+        }
+    }
+}
+
 #[tracing::instrument(
     name = "Adding a new subscriber",
     skip(state, data),
@@ -53,63 +91,44 @@ impl TryFrom<FormData> for NewSubscriber {
 pub async fn subscribe(
     State(state): State<Arc<AppState>>,
     Form(data): Form<FormData>,
-) -> HandlerResponse {
-    let new_subscriber: NewSubscriber = match data.try_into() {
-        Ok(sub) => sub,
-        Err(e) => {
-            tracing::error!("Failed to parse new subscriber: {:?}", e);
-            return HandlerResponse::parse_error("Invalid subscriber data");
-        }
-    };
+) -> Result<(), SubscribeError> {
+    let new_subscriber: NewSubscriber = data.try_into()?;
 
     // Begin transaction
-    let mut transaction = match state.db_pool.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            tracing::error!("Failed to begin database transaction: {:?}", e);
-            return HandlerResponse::server_error();
-        }
-    };
+    let mut transaction = state
+        .db_pool
+        .begin()
+        .await
+        .context("Failed to acquirre Postgres connection from the pool")?;
 
     // Insert subscriber into DB
-    let subscriber_id = match insert_subscriber(&mut transaction, &new_subscriber).await {
-        Ok(id) => id,
-        Err(_) => return HandlerResponse::server_error(),
-    };
+    let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
+        .await
+        .context("Failed to insert new subscriber into the database")?;
 
     // Generate and insert subscription token into DB
     let subscription_token = SubscriptionToken::generate();
-    if store_token(&mut transaction, subscriber_id, &subscription_token)
+    store_token(&mut transaction, subscriber_id, &subscription_token)
         .await
-        .is_err()
-    {
-        return HandlerResponse::server_error();
-    }
+        .context("Failed to store the confirmation token for a new subscriber")?;
 
     // Commit transaction
-    if transaction
+    transaction
         .commit()
         .await
-        .inspect_err(|e| tracing::error!("Failed to commit database transaction: {:?}", e))
-        .is_err()
-    {
-        return HandlerResponse::server_error();
-    }
+        .context("Failed to commit SQL transaction to store a new subscriber")?;
 
     // Send confirmation email with subscription token
-    if send_confirmation_email(
+    send_confirmation_email(
         &state.email_client,
         &new_subscriber,
         &state.app_base_url,
         &subscription_token,
     )
     .await
-    .is_err()
-    {
-        return HandlerResponse::server_error();
-    }
+    .context("Failed to send a confirmation email")?;
 
-    HandlerResponse::ok()
+    Ok(())
 }
 
 #[tracing::instrument(
@@ -134,11 +153,7 @@ pub async fn insert_subscriber(
         SubscriptionStatus::PendingConfirmation.to_string(),
     )
     .execute(&mut **transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .await?;
 
     Ok(subscriber_id)
 }
@@ -169,10 +184,6 @@ pub async fn send_confirmation_email(
     email_client
         .send_email(&new_subscriber.email, "Welcome!", &html_body, &plain_body)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to send email: {:?}", e);
-            e
-        })
 }
 
 #[tracing::instrument(
@@ -191,11 +202,7 @@ pub async fn store_token(
         subscriber_id,
     )
     .execute(&mut **transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .await?;
 
     Ok(())
 }
