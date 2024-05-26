@@ -1,4 +1,8 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use anyhow::Context;
 use axum::{http::StatusCode, response::IntoResponse, Json};
@@ -59,9 +63,16 @@ pub async fn fake_email(Json(request): Json<EmailRequest>) -> Result<(), FakeEma
     fs::create_dir_all(".fake_emails/").context("Failed to create fake emails directory")?;
 
     // Write fake email to file
+    let unix_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Unexpected time error");
+
     let pretty_request = String::from_utf8(buf).unwrap();
-    fs::write(Path::new(".fake_emails").join(request.to), pretty_request)
-        .context("Failed to write fake email request")?;
+    fs::write(
+        Path::new(".fake_emails").join(format!("{}__{}.json", unix_time.as_millis(), request.to)),
+        pretty_request,
+    )
+    .context("Failed to write fake email request")?;
 
     Ok(())
 }

@@ -48,13 +48,10 @@ impl Application {
                     ),
             );
 
-        match get_environment() {
-            Environment::Local => {
-                // Fake email server for local env
-                router = router.route("/email", routing::post(routes::fake_email))
-            }
-            _ => (),
-        }
+        if let Environment::Local = get_environment() {
+            // Fake email server for local env
+            router = router.route("/email", routing::post(routes::fake_email))
+        };
 
         Self {
             address: addr,

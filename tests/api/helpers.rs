@@ -31,7 +31,7 @@ pub struct ConfirmationLinks {
 }
 
 pub struct TestApp {
-    pub server: TestServer,
+    pub app_server: TestServer,
     pub app_state: Arc<AppState>,
     pub email_server: MockServer,
 }
@@ -57,10 +57,10 @@ impl TestApp {
             .expect("Failed to parse address.");
 
         let app = zero2prod::startup::Application::new(address, app_state.clone());
-        let server = TestServer::new(app.router()).expect("Failed to spawn test server");
+        let app_server = TestServer::new(app.router()).expect("Failed to spawn test server");
 
         Self {
-            server,
+            app_server,
             app_state,
             email_server,
         }
@@ -80,7 +80,7 @@ impl TestApp {
             data.push(("email", email.unwrap()))
         }
 
-        self.server.post("/subscribe").form(&data).await
+        self.app_server.post("/subscribe").form(&data).await
     }
 
     /// Send POST request to `/subscribe` with name and email.
@@ -119,5 +119,20 @@ impl TestApp {
             plain_text: Url::parse(&text_link)
                 .expect("Failed to parse plain text confirmation link."),
         }
+    }
+
+    pub async fn post_subscriptions_and_try_confirm(
+        &self,
+        name: Option<String>,
+        email: Option<String>,
+    ) -> TestResponse {
+        let confirmation_links = self
+            .post_subscriptions_and_extract_confirmation_link(name, email)
+            .await;
+
+        self.app_server
+            .get(confirmation_links.html.path())
+            .add_query_params(confirmation_links.html.query_params())
+            .await
     }
 }

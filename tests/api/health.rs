@@ -8,7 +8,7 @@ async fn health_check_works(pool: PgPool) {
     let test_app = helpers::TestApp::setup(pool).await;
 
     // Act
-    let response = test_app.server.get("/health").await;
+    let response = test_app.app_server.get("/health").await;
 
     // Assert
     response.assert_status_ok();
