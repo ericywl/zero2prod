@@ -105,7 +105,7 @@ pub async fn subscribe(
     State(state): State<AppState>,
     Form(data): Form<FormData>,
 ) -> Result<(), SubscribeError> {
-    let new_subscriber: NewSubscriber = data.try_into()?;
+    let mut new_subscriber: NewSubscriber = data.try_into()?;
     let subscription_token: SubscriptionToken;
 
     // Begin transaction
@@ -121,6 +121,7 @@ pub async fn subscribe(
         .context("Failed to get existing subscriber from the database")?;
 
     match existing_subscriber {
+        // Subscriber already exists
         Some(subscriber) => {
             // Subscription status already confirmed, return error
             if subscriber.status == SubscriptionStatus::Confirmed {
@@ -130,7 +131,17 @@ pub async fn subscribe(
             subscription_token = get_existing_subscription_token(&mut transaction, subscriber.id)
                 .await
                 .context("Failed to get existing subscription token from the database")?;
+            // Replace name with saved name
+            // TODO: Update database with new name if it's different
+            new_subscriber.name = subscriber.name;
+
+            // Rollback transaction
+            transaction
+                .rollback()
+                .await
+                .context("Failed to rollback SQL transaction after getting existing token")?;
         }
+        // Subscriber does not exist
         None => {
             // Insert new subscriber into DB
             let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
@@ -154,7 +165,7 @@ pub async fn subscribe(
     // Send confirmation email with subscription token
     send_confirmation_email(
         &state.email_client,
-        &new_subscriber.email,
+        &new_subscriber,
         &state.app_base_url,
         &subscription_token,
     )
@@ -166,7 +177,7 @@ pub async fn subscribe(
 
 struct ExistingSubscriber {
     id: uuid::Uuid,
-    _name: Name,
+    name: Name,
     _email: Email,
     status: SubscriptionStatus,
 }
@@ -186,7 +197,7 @@ async fn get_existing_subscriber(
     match result {
         Some(r) => Ok(Some(ExistingSubscriber {
             id: r.id,
-            _name: Name::parse(&r.name)?,
+            name: Name::parse(&r.name)?,
             _email: Email::parse(&r.email)?,
             status: r
                 .status
@@ -244,11 +255,11 @@ async fn insert_subscriber(
 
 #[tracing::instrument(
     name = "Sending confirmation email to new subscriber",
-    skip(email_client, subscriber_email, app_base_url, subscription_token)
+    skip(email_client, subscriber, app_base_url, subscription_token)
 )]
 async fn send_confirmation_email(
     email_client: &EmailClient,
-    subscriber_email: &Email,
+    subscriber: &NewSubscriber,
     app_base_url: &Url,
     subscription_token: &SubscriptionToken,
 ) -> Result<(), SendEmailError> {
@@ -259,14 +270,15 @@ async fn send_confirmation_email(
         subscription_token.as_str()
     )));
 
-    let html_body = template::confirmation_email_with_link(&confirmation_link);
+    let html_body =
+        template::confirmation_email_with_variables(&subscriber.name, &confirmation_link);
     let plain_body = format!(
         "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
         confirmation_link,
     );
 
     email_client
-        .send_email(subscriber_email, "Welcome!", &html_body, &plain_body)
+        .send_email(&subscriber.email, "Welcome!", &html_body, &plain_body)
         .await
 }
 

@@ -35,6 +35,10 @@ impl Email {
             Ok(email)
         }
     }
+
+    pub fn as_str(&self) -> &str {
+        self.as_ref()
+    }
 }
 
 impl std::fmt::Display for Email {

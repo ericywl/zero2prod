@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use tera::{Context, Tera};
 
-use crate::domain::Url;
+use crate::domain::{Name, Url};
 
 lazy_static! {
     static ref TEMPLATES: Tera = {
@@ -15,8 +15,9 @@ lazy_static! {
     };
 }
 
-pub fn confirmation_email_with_link(link: &Url) -> String {
+pub fn confirmation_email_with_variables(name: &Name, link: &Url) -> String {
     let mut context = Context::new();
+    context.insert("name", name.as_ref());
     context.insert("confirmation_link", link.as_str());
 
     TEMPLATES
@@ -31,7 +32,8 @@ mod test {
     #[test]
     fn template_works() {
         let mut context = Context::new();
-        context.insert("confirmation_link", "hello");
+        context.insert("name", "Mamamia");
+        context.insert("confirmation_link", "hecomundo@bleach.com");
 
         assert!(
             TEMPLATES

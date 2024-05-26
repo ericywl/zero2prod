@@ -55,14 +55,8 @@ impl Name {
         }
     }
 
-    pub fn inner(self) -> String {
-        // The caller gets the inner string, but they do not have a SubscriberName anymore!
-        // That's because `inner` takes `self` by value, consuming it according to move semantics
-        self.0
-    }
-
-    pub fn inner_mut(&mut self) -> &mut str {
-        &mut self.0
+    pub fn as_str(&self) -> &str {
+        self.as_ref()
     }
 }
 
