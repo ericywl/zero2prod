@@ -100,7 +100,8 @@ impl TestApp {
             .expect("Failed to parse address.");
 
         let app = zero2prod::startup::Application::new(address, app_state.clone());
-        let app_server = TestServer::new(app.router()).expect("Failed to spawn test server");
+        let mut app_server = TestServer::new(app.router()).expect("Failed to spawn test server");
+        app_server.do_save_cookies();
 
         // Setup test user
         let test_user = TestUser::generate();
@@ -221,6 +222,10 @@ impl TestApp {
         Body: serde::Serialize,
     {
         self.app_server.post("/login").form(body).await
+    }
+
+    pub async fn get_login_html(&self) -> String {
+        self.app_server.get("/login").await.text()
     }
 }
 

@@ -4,13 +4,19 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     Form,
 };
+use axum_extra::extract::CookieJar;
 use secrecy::SecretString;
 use serde::Deserialize;
 
 use crate::{authentication, startup::AppState, telemetry, template};
 
-pub async fn login_form(State(_state): State<AppState>) -> Html<String> {
-    Html(template::login_page_html(None))
+pub async fn login_form(cookie_jar: CookieJar) -> Html<String> {
+    let error_msg = match cookie_jar.get("_flash") {
+        None => None,
+        Some(cookie) => Some(cookie.value().to_string()),
+    };
+
+    Html(template::login_page_html(error_msg))
 }
 
 #[derive(Deserialize)]
