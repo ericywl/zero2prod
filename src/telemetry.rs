@@ -1,3 +1,4 @@
+use tokio::task::JoinHandle;
 use tracing::subscriber::Subscriber;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
@@ -41,6 +42,21 @@ pub fn init_subscriber(subscriber: impl Subscriber + Send + Sync) {
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 }
 
+/// Spawns a new blocking thread while inheriting parent span properties for tracing.
+pub fn spawn_blocking_with_tracing<F, R>(f: F) -> JoinHandle<R>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    // This executes before spawning the new thread, so it will inherit the parent span properties
+    let current_span = tracing::Span::current();
+    tokio::task::spawn_blocking(move || {
+        // Pass ownership to the new thread and explicitly execute the computation within its scope
+        current_span.in_scope(f)
+    })
+}
+
+/// Format error into a chain of error causes.
 pub fn error_chain_fmt(
     e: &impl std::error::Error,
     f: &mut std::fmt::Formatter<'_>,

@@ -1,8 +1,8 @@
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use axum::http::{header, HeaderValue};
 use axum_test::{TestResponse, TestServer};
 use base64::Engine;
 use once_cell::sync::Lazy;
-use sha3::Digest;
 use sqlx::PgPool;
 
 use uuid::Uuid;
@@ -27,6 +27,7 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     }
 });
 
+#[derive(Debug, Clone)]
 pub struct TestUser {
     pub user_id: Uuid,
     pub username: String,
@@ -43,8 +44,16 @@ impl TestUser {
     }
 
     async fn store(&self, pool: &PgPool) {
-        let password_hash = sha3::Sha3_256::digest(self.password.as_bytes());
-        let password_hash = format!("{:x}", password_hash);
+        let salt = SaltString::generate(&mut rand::thread_rng());
+        let password_hash = Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            argon2::Params::new(15000, 2, 1, None).unwrap(),
+        )
+        .hash_password(self.password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+
         sqlx::query!(
             "INSERT INTO users (user_id, username, password_hash)
             VALUES ($1, $2, $3)",
@@ -67,7 +76,7 @@ pub struct TestApp {
     pub app_server: TestServer,
     pub app_state: AppState,
     pub email_server: MockServer,
-    test_user: TestUser,
+    pub test_user: TestUser,
 }
 
 impl TestApp {
@@ -112,18 +121,31 @@ impl TestApp {
             .await
     }
 
-    /// Send POST request to `/newsletters`.
-    pub async fn post_newsletters(&self, body: serde_json::Value) -> TestResponse {
-        let basic_auth = base64::engine::general_purpose::STANDARD.encode(format!(
-            "{}:{}",
-            self.test_user.username, self.test_user.password
-        ));
-        let header_value = HeaderValue::from_str(&format!("Basic {}", basic_auth)).unwrap();
+    /// Send POST request to `/newsletters` with specified user.
+    pub async fn post_newsletters_with_user(
+        &self,
+        body: serde_json::Value,
+        optional_user: Option<TestUser>,
+    ) -> TestResponse {
+        let mut request = self.app_server.post("/newsletters").json(&body);
 
-        self.app_server
-            .post("/newsletters")
-            .add_header(header::AUTHORIZATION, header_value)
-            .json(&body)
+        if let Some(user) = optional_user {
+            let basic_auth = base64::engine::general_purpose::STANDARD
+                .encode(format!("{}:{}", user.username, user.password));
+
+            let header_value = HeaderValue::from_str(&format!("Basic {}", basic_auth)).unwrap();
+            request = request.add_header(header::AUTHORIZATION, header_value)
+        }
+
+        request.await
+    }
+
+    /// Send POST request to `/newsletters` with default user that is authenticated.
+    pub async fn post_newsletters_with_default_user(
+        &self,
+        body: serde_json::Value,
+    ) -> TestResponse {
+        self.post_newsletters_with_user(body, Some(self.test_user.clone()))
             .await
     }
 
