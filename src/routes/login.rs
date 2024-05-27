@@ -4,19 +4,21 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     Form,
 };
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::{cookie::Cookie, CookieJar};
 use secrecy::SecretString;
 use serde::Deserialize;
 
 use crate::{authentication, startup::AppState, telemetry, template};
 
-pub async fn login_form(cookie_jar: CookieJar) -> Html<String> {
-    let error_msg = match cookie_jar.get("_flash") {
-        None => None,
-        Some(cookie) => Some(cookie.value().to_string()),
-    };
+pub async fn login_form(cookie_jar: CookieJar) -> (CookieJar, Html<String>) {
+    let error_msg = cookie_jar
+        .get("_flash")
+        .map(|cookie| cookie.value().to_string());
 
-    Html(template::login_page_html(error_msg))
+    (
+        cookie_jar.remove(Cookie::from("_flash")),
+        Html(template::login_page_html(error_msg)),
+    )
 }
 
 #[derive(Deserialize)]
@@ -61,15 +63,15 @@ impl IntoResponse for LoginError {
     }
 }
 
-#[tracing::instrument(skip(state, form), fields(username=tracing::field::Empty, user_id=tracing::field::Empty))]
+#[tracing::instrument(skip(db_pool, form), fields(username=tracing::field::Empty, user_id=tracing::field::Empty))]
 pub async fn login(
-    State(state): State<AppState>,
+    State(AppState { db_pool, .. }): State<AppState>,
     Form(form): Form<LoginFormData>,
 ) -> Result<Redirect, LoginError> {
     let credentials: authentication::Credentials = form.into();
     tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
 
-    let user_id = authentication::validate_credentials(&state.db_pool, credentials)
+    let user_id = authentication::validate_credentials(&db_pool, credentials)
         .await
         .map_err(|e| match e {
             authentication::AuthError::InvalidCredentials(_) => LoginError::AuthError(e.into()),

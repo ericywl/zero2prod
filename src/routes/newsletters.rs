@@ -74,8 +74,16 @@ impl IntoResponse for PublishError {
     }
 }
 
+#[tracing::instrument(
+    name = "Publishing newsletter",
+    skip(db_pool, email_client, headers, body)
+)]
 pub async fn publish_newsletter(
-    State(state): State<AppState>,
+    State(AppState {
+        db_pool,
+        email_client,
+        ..
+    }): State<AppState>,
     headers: HeaderMap,
     Json(body): Json<BodyData>,
 ) -> Result<(), PublishError> {
@@ -83,7 +91,7 @@ pub async fn publish_newsletter(
         authentication::retrieve_basic_auth(&headers).map_err(PublishError::AuthError)?;
     tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
 
-    let user_id = authentication::validate_credentials(&state.db_pool, credentials)
+    let user_id = authentication::validate_credentials(&db_pool, credentials)
         .await
         .map_err(|e| match e {
             authentication::AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
@@ -93,7 +101,7 @@ pub async fn publish_newsletter(
         })?;
     tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
 
-    let subscribers = get_confirmed_subscribers(&state.db_pool)
+    let subscribers = get_confirmed_subscribers(&db_pool)
         .await
         .context("Failed to get confirmed subscribers from the database")
         .map_err(PublishError::UnexpectedError)?;
@@ -101,8 +109,7 @@ pub async fn publish_newsletter(
     for subscriber in subscribers {
         match subscriber {
             Ok(subscriber) => {
-                state
-                    .email_client
+                email_client
                     .send_email(
                         &subscriber.email,
                         &body.title,

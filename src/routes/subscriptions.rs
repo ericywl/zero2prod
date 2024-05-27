@@ -95,22 +95,25 @@ impl IntoResponse for SubscribeError {
 
 #[tracing::instrument(
     name = "Adding a new subscriber",
-    skip(state, data),
+    skip(db_pool, email_client, app_base_url, data),
     fields(
         subscriber_email = %data.email,
         subscriber_name = %data.name
     )
 )]
 pub async fn subscribe(
-    State(state): State<AppState>,
+    State(AppState {
+        db_pool,
+        email_client,
+        app_base_url,
+    }): State<AppState>,
     Form(data): Form<SubscribeFormData>,
 ) -> Result<(), SubscribeError> {
     let mut new_subscriber: NewSubscriber = data.try_into()?;
     let subscription_token: SubscriptionToken;
 
     // Begin transaction
-    let mut transaction = state
-        .db_pool
+    let mut transaction = db_pool
         .begin()
         .await
         .context("Failed to acquirre Postgres connection from the pool")?;
@@ -164,9 +167,9 @@ pub async fn subscribe(
 
     // Send confirmation email with subscription token
     send_confirmation_email(
-        &state.email_client,
+        &email_client,
         &new_subscriber,
-        &state.app_base_url,
+        &app_base_url,
         &subscription_token,
     )
     .await

@@ -7,7 +7,7 @@ async fn an_error_flash_message_is_set_on_failure(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
 
-    // Act
+    // Act - Login
     let login_body = serde_json::json!({
         "username": "some-username",
         "password": "some-password"
@@ -19,7 +19,11 @@ async fn an_error_flash_message_is_set_on_failure(pool: PgPool) {
     let flash_cookie = response.cookie("_flash");
     assert_eq!(flash_cookie.value(), "Authentication failed");
 
-    // Act 2
+    // Act 2 - Follow redirect
     let html_page = test_app.get_login_html().await;
     assert!(html_page.contains("Authentication failed"));
+
+    // Act 3 - Reload login page
+    let html_page = test_app.get_login_html().await;
+    assert!(!html_page.contains("Authentication failed"));
 }

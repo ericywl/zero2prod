@@ -73,15 +73,15 @@ impl IntoResponse for ConfirmSubscriptionError {
     }
 }
 
-#[tracing::instrument(name = "Confirm a pending subscriber", skip(state, params))]
+#[tracing::instrument(name = "Confirm a pending subscriber", skip(db_pool, params))]
 pub async fn confirm(
-    State(state): State<AppState>,
+    State(AppState { db_pool, .. }): State<AppState>,
     Query(params): Query<Parameters>,
 ) -> Result<(), ConfirmSubscriptionError> {
     let subscription_token = SubscriptionToken::parse(&params.subscription_token)?;
 
     // Get subscriber ID from token
-    let subscriber_id = get_subscriber_id_from_token(&state.db_pool, &subscription_token)
+    let subscriber_id = get_subscriber_id_from_token(&db_pool, &subscription_token)
         .await
         .context("Failed to get subscriber_id associated with the provided token")?;
 
@@ -91,7 +91,7 @@ pub async fn confirm(
     }
 
     // Check if subscription already confirmed
-    let status = get_subscriber_status(&state.db_pool, subscriber_id.unwrap())
+    let status = get_subscriber_status(&db_pool, subscriber_id.unwrap())
         .await
         .context("Failed to get subscriber status")?;
     if status == SubscriptionStatus::Confirmed {
@@ -99,7 +99,7 @@ pub async fn confirm(
     }
 
     // Confirm subscriber using retrieved ID
-    confirm_subscriber(&state.db_pool, subscriber_id.unwrap())
+    confirm_subscriber(&db_pool, subscriber_id.unwrap())
         .await
         .context("Failed to confirm subscriber in the database")?;
 
