@@ -24,7 +24,10 @@ impl Application {
     pub fn new(addr: SocketAddr, app_state: AppState) -> Self {
         // Build our application
         let mut router = Router::new()
+            .route("/", routing::get(routes::index))
             .route("/health", routing::get(routes::health_check))
+            .route("/login", routing::get(routes::login_form))
+            .route("/login", routing::post(routes::login))
             .route("/subscribe", routing::post(routes::subscribe))
             .route("/subscribe/confirm", routing::get(routes::confirm))
             .route("/newsletters", routing::post(routes::publish_newsletter))

@@ -5,7 +5,7 @@ use crate::domain::{Name, Url};
 
 lazy_static! {
     static ref TEMPLATES: Tera = {
-        match Tera::new("templates/**/*") {
+        match Tera::new("src/templates/**/*") {
             Ok(t) => t,
             Err(e) => {
                 tracing::error!("Tera parsing error: {}", e);
@@ -15,7 +15,7 @@ lazy_static! {
     };
 }
 
-pub fn confirmation_email_with_variables(name: &Name, link: &Url) -> String {
+pub fn confirmation_email_html(name: &Name, link: &Url) -> String {
     let mut context = Context::new();
     context.insert("name", name.as_ref());
     context.insert("confirmation_link", link.as_str());
@@ -25,12 +25,21 @@ pub fn confirmation_email_with_variables(name: &Name, link: &Url) -> String {
         .unwrap()
 }
 
+pub fn login_page_html(error_msg: Option<String>) -> String {
+    let mut context = Context::new();
+    if let Some(msg) = error_msg {
+        context.insert("error_msg", &msg);
+    }
+
+    TEMPLATES.render("login.html", &context).unwrap()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-    fn template_works() {
+    fn confirmation_email_template_works() {
         let mut context = Context::new();
         context.insert("name", "Mamamia");
         context.insert("confirmation_link", "hecomundo@bleach.com");
@@ -41,5 +50,16 @@ mod test {
                 .is_ok(),
             "Failed to render template."
         );
+    }
+
+    #[test]
+    fn login_template_works() {
+        let mut context = Context::new();
+        context.insert("error_msg", "something");
+
+        assert!(
+            TEMPLATES.render("login.html", &context).is_ok(),
+            "Failed to render template."
+        )
     }
 }

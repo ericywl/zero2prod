@@ -1,5 +1,5 @@
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
-use axum::http::{header, HeaderValue};
+use axum::http::{header, HeaderValue, StatusCode};
 use axum_test::{TestResponse, TestServer};
 use base64::Engine;
 use once_cell::sync::Lazy;
@@ -215,4 +215,16 @@ impl TestApp {
 
         self.query_link_with_params(&confirmation_links.html).await
     }
+
+    pub async fn post_login<Body>(&self, body: &Body) -> TestResponse
+    where
+        Body: serde::Serialize,
+    {
+        self.app_server.post("/login").form(body).await
+    }
+}
+
+pub fn assert_is_redirect_to(response: &TestResponse, location: &str) {
+    response.assert_status(StatusCode::SEE_OTHER);
+    assert_eq!(response.headers().get("Location").unwrap(), location);
 }

@@ -22,7 +22,7 @@ pub enum FormDataError {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct FormData {
+pub struct SubscribeFormData {
     pub name: String,
     pub email: String,
 }
@@ -32,10 +32,10 @@ struct NewSubscriber {
     email: Email,
 }
 
-impl TryFrom<FormData> for NewSubscriber {
+impl TryFrom<SubscribeFormData> for NewSubscriber {
     type Error = FormDataError;
 
-    fn try_from(value: FormData) -> Result<Self, Self::Error> {
+    fn try_from(value: SubscribeFormData) -> Result<Self, Self::Error> {
         let name = Name::parse(&value.name)?;
         let email = Email::parse(&value.email)?;
         Ok(Self { name, email })
@@ -103,7 +103,7 @@ impl IntoResponse for SubscribeError {
 )]
 pub async fn subscribe(
     State(state): State<AppState>,
-    Form(data): Form<FormData>,
+    Form(data): Form<SubscribeFormData>,
 ) -> Result<(), SubscribeError> {
     let mut new_subscriber: NewSubscriber = data.try_into()?;
     let subscription_token: SubscriptionToken;
@@ -269,8 +269,7 @@ async fn send_confirmation_email(
         subscription_token.as_str()
     )));
 
-    let html_body =
-        template::confirmation_email_with_variables(&subscriber.name, &confirmation_link);
+    let html_body = template::confirmation_email_html(&subscriber.name, &confirmation_link);
     let plain_body = format!(
         "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
         confirmation_link,

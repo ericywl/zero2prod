@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Page</title>
+    <style>
+        /* Inline CSS styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        input[type="text"],
+        input[type="password"],
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #007bff;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .error_msg {
+            color: #d8000c;
+            font-size: 95%;
+            background-color: #ffdcdc;
+            background-image: url('https://www.freeiconspng.com/uploads/the-error-exclamation-point-photos-6.png');
+            background-size: 32px;
+            margin-bottom: 10px;
+            padding: 15px 10px 15px 50px;
+            background-repeat: no-repeat;
+            background-position: 10px center;
+            border: 1px solid;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>Login</h2>
+        <form id="loginForm" action="/login" method="post">
+            <input type="text" id="username" placeholder="Username" name="username" required>
+            <input type="password" id="password" placeholder="Password" name="password" required>
+            <button type="submit">Login</button>
+        </form>
+        {% if error_msg %}
+        <div class="error_msg">
+            <i>{{ error_msg }}</i>
+        </div>
+        {% endif %}
+    </div>
+</body>
+
+</html>

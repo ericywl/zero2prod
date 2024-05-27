@@ -162,11 +162,11 @@ async fn non_existing_user_is_rejected(pool: PgPool) {
     let response = test_app
         .post_newsletters_with_user(
             serde_json::json!({
-            "title": "Newsletter title",
-            "content": {
-            "text": "Newsletter body as plain text",
-            "html": "<p>Newsletter body as HTML</p>",
-            }
+                "title": "Newsletter title",
+                "content": {
+                    "text": "Newsletter body as plain text",
+                    "html": "<p>Newsletter body as HTML</p>",
+                }
             }),
             Some(random_user),
         )
@@ -194,11 +194,11 @@ async fn invalid_password_is_rejected(pool: PgPool) {
     let response = test_app
         .post_newsletters_with_user(
             serde_json::json!({
-            "title": "Newsletter title",
-            "content": {
-            "text": "Newsletter body as plain text",
-            "html": "<p>Newsletter body as HTML</p>",
-            }
+                "title": "Newsletter title",
+                "content": {
+                    "text": "Newsletter body as plain text",
+                    "html": "<p>Newsletter body as HTML</p>",
+                }
             }),
             Some(invalid_password_user),
         )
