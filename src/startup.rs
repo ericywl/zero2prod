@@ -25,9 +25,10 @@ impl Application {
         // Build our application
         let mut router = Router::new()
             .route("/", routing::get(routes::index))
+            .route("/", routing::post(routes::subscribe_with_flash))
             .route("/health", routing::get(routes::health_check))
             .route("/login", routing::get(routes::login_form))
-            .route("/login", routing::post(routes::login))
+            .route("/login", routing::post(routes::login_with_flash))
             .route("/subscribe", routing::post(routes::subscribe))
             .route("/subscribe/confirm", routing::get(routes::confirm))
             .route("/newsletters", routing::post(routes::publish_newsletter))
@@ -88,6 +89,13 @@ pub struct AppState {
     pub db_pool: Arc<sqlx::PgPool>,
     pub email_client: Arc<EmailClient>,
     pub app_base_url: Url,
+    pub flash_config: axum_flash::Config,
+}
+
+impl axum::extract::FromRef<AppState> for axum_flash::Config {
+    fn from_ref(state: &AppState) -> axum_flash::Config {
+        state.flash_config.clone()
+    }
 }
 
 pub fn default_app_state(settings: &Settings, overwrite_db_pool: Option<sqlx::PgPool>) -> AppState {
@@ -111,5 +119,6 @@ pub fn default_app_state(settings: &Settings, overwrite_db_pool: Option<sqlx::Pg
         db_pool: Arc::new(db_pool),
         email_client: Arc::new(email_client),
         app_base_url,
+        flash_config: axum_flash::Config::new(axum_flash::Key::generate()),
     }
 }

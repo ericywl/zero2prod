@@ -1,5 +1,17 @@
-use axum::response::Html;
+use axum::response::{Html, IntoResponse};
+use axum_flash::IncomingFlashes;
 
-pub async fn index() -> Html<&'static str> {
-    Html(include_str!("index/index.html"))
+use crate::template;
+
+pub async fn index(flashes: IncomingFlashes) -> impl IntoResponse {
+    let success_msg = flashes
+        .iter()
+        .find(|(l, _)| l == &axum_flash::Level::Success)
+        .map(|(_, m)| m.to_string());
+    let error_msg = flashes
+        .iter()
+        .find(|(l, _)| l == &axum_flash::Level::Error)
+        .map(|(_, m)| m.to_string());
+
+    (flashes, Html(template::index_html(success_msg, error_msg)))
 }

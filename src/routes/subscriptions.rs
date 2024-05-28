@@ -1,5 +1,7 @@
 use anyhow::Context;
+use axum::response::Redirect;
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Form};
+use axum_flash::Flash;
 use chrono::Utc;
 use serde::Deserialize;
 use sqlx::{Postgres, Transaction};
@@ -93,6 +95,17 @@ impl IntoResponse for SubscribeError {
     }
 }
 
+pub async fn subscribe_with_flash(
+    state: State<AppState>,
+    flash: Flash,
+    form: Form<SubscribeFormData>,
+) -> impl IntoResponse {
+    match subscribe(state, form).await {
+        Ok(()) => (flash.success("Thanks for subscribing!"), Redirect::to("/")),
+        Err(e) => (flash.error(e.to_string()), Redirect::to("/")),
+    }
+}
+
 #[tracing::instrument(
     name = "Adding a new subscriber",
     skip(db_pool, email_client, app_base_url, data),
@@ -106,6 +119,7 @@ pub async fn subscribe(
         db_pool,
         email_client,
         app_base_url,
+        ..
     }): State<AppState>,
     Form(data): Form<SubscribeFormData>,
 ) -> Result<(), SubscribeError> {

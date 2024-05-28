@@ -67,7 +67,6 @@
         }
 
         input[type="text"],
-        input[type="password"],
         button {
             width: 100%;
             padding: 10px;
@@ -97,6 +96,21 @@
             border-radius: 5px;
             box-sizing: border-box;
         }
+
+        .success_msg {
+            color: #00d80c;
+            font-size: 95%;
+            background-color: #dcffdc;
+            background-image: url('https://www.freeiconspng.com/uploads/green-tick-icon-0.png');
+            background-size: 32px;
+            margin-bottom: 10px;
+            padding: 15px 10px 15px 50px;
+            background-repeat: no-repeat;
+            background-position: 10px center;
+            border: 1px solid;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 
@@ -104,21 +118,25 @@
     <div class="header">
         <a href="/" class="logo">Zero2Prod</a>
         <div class="header-right">
-            <a href="/login" class="active">Login</a>
+            <a href="/login">Login</a>
         </div>
     </div>
 
     <div class="content">
         <div class="container">
-            <h2>Login</h2>
-            <form id="loginForm" action="/login" method="post">
-                <input type="text" id="username" placeholder="Username" name="username" required>
-                <input type="password" id="password" placeholder="Password" name="password" required>
-                <button type="submit">Login</button>
+            <h2>Subscribe to our newsletter!</h2>
+            <form id="subscribeForm" action="/" method="post">
+                <input type="text" id="name" placeholder="Name" name="name" required>
+                <input type="text" id="email" placeholder="Email" name="email" required>
+                <button type="submit">Subscribe</button>
             </form>
             {% if error_msg %}
             <div class="error_msg">
                 <i>{{ error_msg }}</i>
+            </div>
+            {% elif success_msg %}
+            <div class="success_msg">
+                <i>{{ success_msg }}</i>
             </div>
             {% endif %}
         </div>

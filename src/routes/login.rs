@@ -1,24 +1,22 @@
 use axum::{
     extract::State,
-    http::{header, HeaderValue},
     response::{Html, IntoResponse, Redirect},
     Form,
 };
-use axum_extra::extract::{cookie::Cookie, CookieJar};
+use axum_flash::{Flash, IncomingFlashes};
 use secrecy::SecretString;
 use serde::Deserialize;
 
 use crate::{authentication, startup::AppState, telemetry, template};
 
-pub async fn login_form(cookie_jar: CookieJar) -> (CookieJar, Html<String>) {
-    let error_msg = cookie_jar
-        .get("_flash")
-        .map(|cookie| cookie.value().to_string());
+pub async fn login_form(flashes: IncomingFlashes) -> (IncomingFlashes, Html<String>) {
+    let error_msg = flashes
+        .iter()
+        // We only have at most 1 error message
+        .find(|(l, _)| l == &axum_flash::Level::Error)
+        .map(|(_, m)| m.to_string());
 
-    (
-        cookie_jar.remove(Cookie::from("_flash")),
-        Html(template::login_page_html(error_msg)),
-    )
+    (flashes, Html(template::login_page_html(error_msg)))
 }
 
 #[derive(Deserialize)]
@@ -51,24 +49,24 @@ impl std::fmt::Debug for LoginError {
     }
 }
 
-impl IntoResponse for LoginError {
-    fn into_response(self) -> axum::response::Response {
-        // Redirect back to login but with error
-        let mut response = Redirect::to("/login").into_response();
-        response.headers_mut().insert(
-            header::SET_COOKIE,
-            HeaderValue::from_str(&format!("_flash={}", self)).unwrap(),
-        );
-        response
+pub async fn login_with_flash(
+    state: State<AppState>,
+    flash: Flash,
+    form: Form<LoginFormData>,
+) -> impl IntoResponse {
+    match login(state, form).await {
+        Ok(()) => (flash, Redirect::to("/")),
+        // Redirect back to login page with flash message
+        Err(e) => (flash.error(e.to_string()), Redirect::to("/login")),
     }
 }
 
-#[tracing::instrument(skip(db_pool, form), fields(username=tracing::field::Empty, user_id=tracing::field::Empty))]
+#[tracing::instrument(skip(db_pool, data), fields(username=tracing::field::Empty, user_id=tracing::field::Empty))]
 pub async fn login(
     State(AppState { db_pool, .. }): State<AppState>,
-    Form(form): Form<LoginFormData>,
-) -> Result<Redirect, LoginError> {
-    let credentials: authentication::Credentials = form.into();
+    Form(data): Form<LoginFormData>,
+) -> Result<(), LoginError> {
+    let credentials: authentication::Credentials = data.into();
     tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
 
     let user_id = authentication::validate_credentials(&db_pool, credentials)
@@ -79,5 +77,5 @@ pub async fn login(
         })?;
 
     tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
-    Ok(Redirect::to("/"))
+    Ok(())
 }

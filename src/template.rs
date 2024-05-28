@@ -15,6 +15,20 @@ lazy_static! {
     };
 }
 
+/// Renders index page with either success message or error message or none if both are `None`.
+/// Success message takes precedence.
+pub fn index_html(success_msg: Option<String>, error_msg: Option<String>) -> String {
+    let mut context = Context::new();
+    if let Some(msg) = success_msg {
+        context.insert("success_msg", &msg);
+    } else if let Some(msg) = error_msg {
+        context.insert("error_msg", &msg);
+    }
+
+    TEMPLATES.render("index.html", &context).unwrap()
+}
+
+/// Renders confirmation email with name and confirmation link.
 pub fn confirmation_email_html(name: &Name, link: &Url) -> String {
     let mut context = Context::new();
     context.insert("name", name.as_ref());
@@ -25,6 +39,7 @@ pub fn confirmation_email_html(name: &Name, link: &Url) -> String {
         .unwrap()
 }
 
+/// Renders login page with optional error message.
 pub fn login_page_html(error_msg: Option<String>) -> String {
     let mut context = Context::new();
     if let Some(msg) = error_msg {
@@ -37,6 +52,17 @@ pub fn login_page_html(error_msg: Option<String>) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn index_template_works() {
+        let mut context = Context::new();
+        context.insert("error_msg", "something");
+
+        assert!(
+            TEMPLATES.render("index.html", &context).is_ok(),
+            "Failed to render template."
+        )
+    }
 
     #[test]
     fn confirmation_email_template_works() {
