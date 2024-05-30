@@ -131,12 +131,12 @@ pub async fn default_app_state_and_session(
         .expect("Failed to parse application base url.");
 
     // Initialize Redis session
-    let redis_config = RedisConfig::from_url(&settings.redis_uri.expose_secret())
+    let redis_config = RedisConfig::from_url(settings.redis_uri.expose_secret())
         .expect("Unable to parse redis URI.");
     let redis_pool = RedisPool::new(redis_config, None, None, None, 6)
         .expect("Unable to initialize redis pool.");
 
-    let _ = redis_pool.connect();
+    redis_pool.connect();
     redis_pool
         .wait_for_connect()
         .await
