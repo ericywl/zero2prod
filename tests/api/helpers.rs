@@ -224,8 +224,12 @@ impl TestApp {
         self.app_server.post("/login").form(body).await
     }
 
-    pub async fn get_login_html(&self) -> String {
-        self.app_server.get("/login").await.text()
+    pub async fn get_login(&self) -> TestResponse {
+        self.app_server.get("/login").await
+    }
+
+    pub async fn get_admin_dashboard(&self) -> TestResponse {
+        self.app_server.get("/admin/dashboard").await
     }
 }
 

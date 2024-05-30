@@ -7,7 +7,7 @@ use axum_flash::{Flash, IncomingFlashes};
 use secrecy::SecretString;
 use serde::Deserialize;
 
-use crate::{authentication, startup::AppState, telemetry, template};
+use crate::{authentication, session_state::TypedSession, startup::AppState, telemetry, template};
 
 pub async fn login_form(flashes: IncomingFlashes) -> (IncomingFlashes, Html<String>) {
     let error_msg = flashes
@@ -52,18 +52,20 @@ impl std::fmt::Debug for LoginError {
 pub async fn login_with_flash(
     state: State<AppState>,
     flash: Flash,
+    session: TypedSession,
     form: Form<LoginFormData>,
 ) -> impl IntoResponse {
-    match login(state, form).await {
-        Ok(()) => (flash, Redirect::to("/")),
+    match login(state, session, form).await {
+        Ok(()) => (flash, Redirect::to("/admin/dashboard")),
         // Redirect back to login page with flash message
         Err(e) => (flash.error(e.to_string()), Redirect::to("/login")),
     }
 }
 
-#[tracing::instrument(skip(db_pool, data), fields(username=tracing::field::Empty, user_id=tracing::field::Empty))]
+#[tracing::instrument(skip(db_pool, session, data), fields(username=tracing::field::Empty, user_id=tracing::field::Empty))]
 pub async fn login(
     State(AppState { db_pool, .. }): State<AppState>,
+    session: TypedSession,
     Form(data): Form<LoginFormData>,
 ) -> Result<(), LoginError> {
     let credentials: authentication::Credentials = data.into();
@@ -77,5 +79,9 @@ pub async fn login(
         })?;
 
     tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
+    session
+        .insert_user_id(user_id)
+        .await
+        .map_err(|e| LoginError::UnexpectedError(e.into()))?;
     Ok(())
 }

@@ -7,6 +7,7 @@ use tower_http::{
     trace::{DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
+use tower_sessions::{MemoryStore, SessionManagerLayer};
 use tracing::Level;
 
 use crate::{
@@ -22,6 +23,10 @@ pub struct Application {
 
 impl Application {
     pub fn new(addr: SocketAddr, app_state: AppState) -> Self {
+        // TODO: Use Redis instead
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store);
+
         // Build our application
         let mut router = Router::new()
             .route("/", routing::get(routes::index))
@@ -32,6 +37,7 @@ impl Application {
             .route("/subscribe", routing::post(routes::subscribe))
             .route("/subscribe/confirm", routing::get(routes::confirm))
             .route("/newsletters", routing::post(routes::publish_newsletter))
+            .route("/admin/dashboard", routing::get(routes::admin_dashboard))
             .with_state(app_state)
             .layer(
                 TraceLayer::new_for_http()
@@ -50,7 +56,8 @@ impl Application {
                             .level(Level::INFO)
                             .latency_unit(LatencyUnit::Millis),
                     ),
-            );
+            )
+            .layer(session_layer);
 
         if let Environment::Local = get_environment() {
             // Fake email server for local env
