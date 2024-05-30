@@ -12,6 +12,6 @@ async fn main() -> Result<(), std::io::Error> {
     telemetry::init_subscriber(subscriber);
 
     let settings = get_configuration().expect("Failed to read configuration.");
-    let app = Application::build(&settings);
+    let app = Application::build(&settings).await;
     app.serve().await
 }

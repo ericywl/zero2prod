@@ -4,13 +4,13 @@ use axum_test::{TestResponse, TestServer};
 use base64::Engine;
 use once_cell::sync::Lazy;
 use sqlx::PgPool;
-
 use uuid::Uuid;
 use wiremock::MockServer;
+
 use zero2prod::{
     configuration::get_configuration,
     domain::Url,
-    startup::{default_app_state, AppState},
+    startup::{default_app_state_and_session, AppState},
     telemetry::{get_subscriber, init_subscriber},
 };
 
@@ -93,13 +93,13 @@ impl TestApp {
             c
         };
 
-        let app_state = default_app_state(&config, Some(pool));
+        let (app_state, session_layer) = default_app_state_and_session(&config, Some(pool)).await;
         let address = config
             .application
             .address()
             .expect("Failed to parse address.");
 
-        let app = zero2prod::startup::Application::new(address, app_state.clone());
+        let app = zero2prod::startup::Application::new(address, app_state.clone(), session_layer);
         let mut app_server = TestServer::new(app.router()).expect("Failed to spawn test server");
         app_server.do_save_cookies();
 

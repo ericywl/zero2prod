@@ -27,8 +27,15 @@ DB_PORT="${POSTGRES_PORT:=5432}"
 DB_HOST="${POSTGRES_HOST:=localhost}"
 
 # Allow to skip Docker if a dockerized Postgres database is already running
-if [[ ! -f .db_lock ]] && [[ -z "${SKIP_DOCKER}" ]]
+if [[ -z "${SKIP_DOCKER}" ]]
 then
+    RUNNING_CONTAINER=$(docker ps --filter 'name=zero2prod_db' --format '{{.ID}}')
+    if [[ -n $RUNNING_CONTAINER ]]; then
+        echo >&2 "There is a DB container already running, kill it with"
+        echo >&2 " docker kill zero2prod_db && docker rm zero2prod_db"
+        exit 1
+    fi
+
     # Launch postgres using Docker
     docker run \
         --name zero2prod_db \
@@ -38,9 +45,6 @@ then
         -p "${DB_PORT}":5432 \
         -d postgres \
         postgres -N 1000 # Increased maximum number of connections for testing purposes
-
-    # Create temporary lock file to signify that database is running
-    touch .db_lock
 fi
 
 DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}

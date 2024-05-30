@@ -1,6 +1,3 @@
-# Local testing docker DB lock
-.db_lock
-
 # Fake emails
 /.fake_emails
 

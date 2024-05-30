@@ -2,12 +2,17 @@ use std::{net::SocketAddr, sync::Arc};
 
 use super::routes;
 use axum::{http::Request, routing, Router};
+use secrecy::ExposeSecret;
 use sqlx::PgPool;
 use tower_http::{
     trace::{DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
-use tower_sessions::{MemoryStore, SessionManagerLayer};
+use tower_sessions::SessionManagerLayer;
+use tower_sessions_redis_store::{
+    fred::{clients::RedisPool, interfaces::ClientLike, types::RedisConfig},
+    RedisStore,
+};
 use tracing::Level;
 
 use crate::{
@@ -22,11 +27,11 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(addr: SocketAddr, app_state: AppState) -> Self {
-        // TODO: Use Redis instead
-        let session_store = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store);
-
+    pub fn new(
+        addr: SocketAddr,
+        app_state: AppState,
+        session_layer: SessionManagerLayer<RedisStore<RedisPool>>,
+    ) -> Self {
         // Build our application
         let mut router = Router::new()
             .route("/", routing::get(routes::index))
@@ -70,14 +75,14 @@ impl Application {
         }
     }
 
-    pub fn build(settings: &Settings) -> Self {
+    pub async fn build(settings: &Settings) -> Self {
         let address = settings
             .application
             .address()
             .expect("Unable to parse socket address.");
-        let app_state = default_app_state(settings, None);
+        let (app_state, session_layer) = default_app_state_and_session(settings, None).await;
 
-        Self::new(address, app_state)
+        Self::new(address, app_state, session_layer)
     }
 
     pub async fn serve(self) -> Result<(), std::io::Error> {
@@ -105,7 +110,10 @@ impl axum::extract::FromRef<AppState> for axum_flash::Config {
     }
 }
 
-pub fn default_app_state(settings: &Settings, overwrite_db_pool: Option<sqlx::PgPool>) -> AppState {
+pub async fn default_app_state_and_session(
+    settings: &Settings,
+    overwrite_db_pool: Option<sqlx::PgPool>,
+) -> (AppState, SessionManagerLayer<RedisStore<RedisPool>>) {
     let db_pool = match overwrite_db_pool {
         Some(p) => p,
         None => PgPool::connect_lazy_with(settings.database.with_db()),
@@ -122,10 +130,32 @@ pub fn default_app_state(settings: &Settings, overwrite_db_pool: Option<sqlx::Pg
         .base_url()
         .expect("Failed to parse application base url.");
 
-    AppState {
-        db_pool: Arc::new(db_pool),
-        email_client: Arc::new(email_client),
-        app_base_url,
-        flash_config: axum_flash::Config::new(axum_flash::Key::generate()),
-    }
+    // Initialize Redis session
+    let redis_config = RedisConfig::from_url(&settings.redis_uri.expose_secret())
+        .expect("Unable to parse redis URI.");
+    let redis_pool = RedisPool::new(redis_config, None, None, None, 6)
+        .expect("Unable to initialize redis pool.");
+
+    let _ = redis_pool.connect();
+    redis_pool
+        .wait_for_connect()
+        .await
+        .expect("Unable to connect to pool.");
+
+    let session_store = RedisStore::new(redis_pool);
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false)
+        .with_expiry(tower_sessions::Expiry::OnInactivity(
+            time::Duration::seconds(10),
+        ));
+
+    (
+        AppState {
+            db_pool: Arc::new(db_pool),
+            email_client: Arc::new(email_client),
+            app_base_url,
+            flash_config: axum_flash::Config::new(axum_flash::Key::generate()),
+        },
+        session_layer,
+    )
 }
