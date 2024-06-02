@@ -1,13 +1,13 @@
-use anyhow::Context;
 use axum::{
     extract::State,
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
 };
-use sqlx::PgPool;
-use uuid::Uuid;
 
-use crate::{session_state::TypedSession, startup::AppState, telemetry};
+use crate::{
+    database::user_db, domain::Name, session_state::TypedSession, startup::AppState, telemetry,
+    template,
+};
 
 #[derive(thiserror::Error)]
 pub enum AdminDashboardError {
@@ -48,37 +48,11 @@ pub async fn admin_dashboard(
         .map_err(|e| AdminDashboardError::UnexpectedError(e.into()))?;
 
     let username = match user_id {
-        Some(id) => get_username(&db_pool, id).await?,
+        Some(id) => user_db::get_username(&db_pool, id).await?,
         None => return Ok(Redirect::to("/login").into_response()),
     };
 
-    Ok(Html(format!(
-        r#"<!DOCTYPE html>
-        <html lang="en">
-        <head>
-        <meta http-equiv="content-type" content="text/html; charset=utf-8">
-        <title>Admin dashboard</title>
-        </head>
-        <body>
-        <p>Welcome {username}!</p>
-        </body>
-        </html>"#
-    ))
-    .into_response())
-}
-
-#[tracing::instrument(name = "Get username", skip(db_pool))]
-async fn get_username(db_pool: &PgPool, user_id: Uuid) -> Result<String, anyhow::Error> {
-    let row = sqlx::query!(
-        r#"
-        SELECT username
-        FROM users
-        WHERE user_id = $1
-        "#,
-        user_id,
-    )
-    .fetch_one(db_pool)
-    .await
-    .context("Failed to perform a query to retrieve a username")?;
-    Ok(row.username)
+    let name =
+        Name::parse(&username).map_err(|e| AdminDashboardError::UnexpectedError(e.into()))?;
+    Ok(Html(template::admin_dashboard_html(&name)).into_response())
 }

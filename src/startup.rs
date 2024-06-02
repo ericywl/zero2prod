@@ -43,6 +43,14 @@ impl Application {
             .route("/subscribe/confirm", routing::get(routes::confirm))
             .route("/newsletters", routing::post(routes::publish_newsletter))
             .route("/admin/dashboard", routing::get(routes::admin_dashboard))
+            .route(
+                "/admin/password",
+                routing::get(routes::change_password_form),
+            )
+            .route(
+                "/admin/password",
+                routing::post(routes::change_password_with_flash),
+            )
             .with_state(app_state)
             .layer(
                 TraceLayer::new_for_http()

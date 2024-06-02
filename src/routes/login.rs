@@ -9,14 +9,14 @@ use serde::Deserialize;
 
 use crate::{authentication, session_state::TypedSession, startup::AppState, telemetry, template};
 
-pub async fn login_form(flashes: IncomingFlashes) -> (IncomingFlashes, Html<String>) {
+pub async fn login_form(flashes: IncomingFlashes) -> impl IntoResponse {
     let error_msg = flashes
         .iter()
         // We only have at most 1 error message
         .find(|(l, _)| l == &axum_flash::Level::Error)
         .map(|(_, m)| m.to_string());
 
-    (flashes, Html(template::login_page_html(error_msg)))
+    (flashes, Html(template::login_html(error_msg)))
 }
 
 #[derive(Deserialize)]

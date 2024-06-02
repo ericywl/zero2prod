@@ -217,6 +217,10 @@ impl TestApp {
         self.query_link_with_params(&confirmation_links.html).await
     }
 
+    pub async fn get_login(&self) -> TestResponse {
+        self.app_server.get("/login").await
+    }
+
     pub async fn post_login<Body>(&self, body: &Body) -> TestResponse
     where
         Body: serde::Serialize,
@@ -224,12 +228,19 @@ impl TestApp {
         self.app_server.post("/login").form(body).await
     }
 
-    pub async fn get_login(&self) -> TestResponse {
-        self.app_server.get("/login").await
-    }
-
     pub async fn get_admin_dashboard(&self) -> TestResponse {
         self.app_server.get("/admin/dashboard").await
+    }
+
+    pub async fn get_admin_change_password(&self) -> TestResponse {
+        self.app_server.get("/admin/password").await
+    }
+
+    pub async fn post_admin_change_password<Body>(&self, body: &Body) -> TestResponse
+    where
+        Body: serde::Serialize,
+    {
+        self.app_server.post("/admin/password").form(body).await
     }
 }
 
