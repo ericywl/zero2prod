@@ -2,33 +2,26 @@ use axum::http::StatusCode;
 use sqlx::PgPool;
 use wiremock::{matchers, Mock, ResponseTemplate};
 
-use crate::helpers::{self, TestUser};
+use crate::helpers::{self, assert_is_redirect_to};
 
 #[sqlx::test]
-async fn requests_missing_authorization_are_rejected(pool: PgPool) {
+async fn unauthorized_requests_are_redirected_to_login(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
 
     // Act
     let response = test_app
-        .post_newsletters_with_user(
-            serde_json::json!({
-                "title": "Newsletter title",
-                "content": {
-                    "text": "Newsletter body as plain text",
-                    "html": "<p>Newsletter body as HTML</p>",
-                }
-            }),
-            None,
-        )
+        .post_newsletters(serde_json::json!({
+            "title": "Newsletter title",
+            "content": {
+                "text": "Newsletter body as plain text",
+                "html": "<p>Newsletter body as HTML</p>",
+            }
+        }))
         .await;
 
     // Assert
-    response.assert_status(StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        r#"Basic realm="publish""#,
-        response.headers()["WWW-Authenticate"]
-    );
+    assert_is_redirect_to(&response, "/login");
 }
 
 /// Use the public API of the application under test to create a subscriber.
@@ -60,6 +53,9 @@ async fn create_subscriber(test_app: &helpers::TestApp, confirm: bool) {
 async fn newsletters_returns_error_for_invalid_data(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
+    // Login to post newsletters
+    test_app.login_as_test_user().await;
+
     let test_cases = vec![
         (
             serde_json::json!({
@@ -77,9 +73,8 @@ async fn newsletters_returns_error_for_invalid_data(pool: PgPool) {
     ];
 
     for (invalid_body, error_message) in test_cases {
-        let response = test_app
-            .post_newsletters_with_default_user(invalid_body)
-            .await;
+        // Act
+        let response = test_app.post_newsletters(invalid_body).await;
 
         // Assert
         assert_eq!(
@@ -95,6 +90,7 @@ async fn newsletters_returns_error_for_invalid_data(pool: PgPool) {
 async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
+    test_app.login_as_test_user().await;
     create_subscriber(&test_app, false).await;
 
     Mock::given(matchers::any())
@@ -112,9 +108,7 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) 
             "html": "<p>Newsletter body as HTML</p>",
         }
     });
-    let response = test_app
-        .post_newsletters_with_default_user(newsletter_request_body)
-        .await;
+    let response = test_app.post_newsletters(newsletter_request_body).await;
 
     // Assert
     response.assert_status_ok();
@@ -124,6 +118,7 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) 
 async fn newsletters_are_delivered_to_confirmed_subscribers(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
+    test_app.login_as_test_user().await;
     create_subscriber(&test_app, true).await;
 
     Mock::given(matchers::path("/email"))
@@ -142,72 +137,9 @@ async fn newsletters_are_delivered_to_confirmed_subscribers(pool: PgPool) {
             "html": "<p>Newsletter body as HTML</p>",
         }
     });
-    let response = test_app
-        .post_newsletters_with_default_user(newsletter_request_body)
-        .await;
+    let response = test_app.post_newsletters(newsletter_request_body).await;
 
     // Assert
     response.assert_status_ok();
     // Mock verifies on Drop that we have sent the newsletter email
-}
-
-#[sqlx::test]
-async fn non_existing_user_is_rejected(pool: PgPool) {
-    // Arrange
-    let test_app = helpers::TestApp::setup(pool).await;
-    // Random credentials
-    let random_user = TestUser::generate();
-
-    // Act
-    let response = test_app
-        .post_newsletters_with_user(
-            serde_json::json!({
-                "title": "Newsletter title",
-                "content": {
-                    "text": "Newsletter body as plain text",
-                    "html": "<p>Newsletter body as HTML</p>",
-                }
-            }),
-            Some(random_user),
-        )
-        .await;
-
-    // Assert
-    response.assert_status(StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        r#"Basic realm="publish""#,
-        response.headers()["WWW-Authenticate"]
-    );
-}
-
-#[sqlx::test]
-async fn invalid_password_is_rejected(pool: PgPool) {
-    // Arrange
-    let test_app = helpers::TestApp::setup(pool).await;
-    // Random credentials, but replace username with default test username
-    let mut invalid_password_user = TestUser::generate();
-    invalid_password_user.username = test_app.test_user.username.clone();
-    // Sanity check
-    assert_ne!(invalid_password_user.password, test_app.test_user.password);
-
-    // Act
-    let response = test_app
-        .post_newsletters_with_user(
-            serde_json::json!({
-                "title": "Newsletter title",
-                "content": {
-                    "text": "Newsletter body as plain text",
-                    "html": "<p>Newsletter body as HTML</p>",
-                }
-            }),
-            Some(invalid_password_user),
-        )
-        .await;
-
-    // Assert
-    response.assert_status(StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        r#"Basic realm="publish""#,
-        response.headers()["WWW-Authenticate"]
-    );
 }

@@ -41,8 +41,7 @@ impl Application {
             .route("/login", routing::get(routes::login_form))
             .route("/login", routing::post(routes::login_with_flash))
             .route("/subscribe", routing::post(routes::subscribe))
-            .route("/subscribe/confirm", routing::get(routes::confirm))
-            .route("/newsletters", routing::post(routes::publish_newsletter));
+            .route("/subscribe/confirm", routing::get(routes::confirm));
         if let Environment::Local = get_environment() {
             // Fake email server for local env
             app_router = app_router.route("/email", routing::post(routes::fake_email))
@@ -60,6 +59,10 @@ impl Application {
                 routing::post(routes::change_password_with_flash),
             )
             .route("/admin/logout", routing::post(routes::admin_logout))
+            .route(
+                "/admin/newsletters",
+                routing::post(routes::publish_newsletter),
+            )
             .layer(middleware::from_fn(reject_anonymous_users));
 
         // Build our application

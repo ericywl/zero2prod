@@ -1,7 +1,5 @@
 use anyhow::{Context, Ok};
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher, PasswordVerifier};
-use axum::http::{header, HeaderMap, HeaderValue};
-use base64::Engine;
 use secrecy::{ExposeSecret, Secret, SecretString};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -100,42 +98,6 @@ async fn get_stored_credentials(
     .map(|row| (row.user_id, Secret::new(row.password_hash)));
 
     Ok(row)
-}
-
-pub fn retrieve_basic_auth(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
-    let header_value = headers
-        .get("Authorization")
-        .context("The 'Authorization' header was missing")?
-        .to_str()
-        .context("The 'Authorization' header was not a valid UTF-8 string")?;
-    let base64_segment = header_value
-        .strip_prefix("Basic ")
-        .context("The authorization scheme was not 'Basic'")?;
-    let decoded_bytes = base64::engine::general_purpose::STANDARD
-        .decode(base64_segment)
-        .context("Failed to decode base64 'Basic' credentials")?;
-    let decoded_credentials = String::from_utf8(decoded_bytes)
-        .context("The decoded credential string is not valid UTF-8")?;
-
-    let mut credentials = decoded_credentials.splitn(2, ':');
-    let username = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'Basic' auth."))?
-        .to_string();
-    let password = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'Basic' auth."))?
-        .to_string();
-
-    Ok(Credentials {
-        username,
-        password: Secret::new(password),
-    })
-}
-
-pub fn add_basic_auth_header(headers: &mut HeaderMap) {
-    let header_value = HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
-    headers.insert(header::WWW_AUTHENTICATE, header_value);
 }
 
 #[tracing::instrument(name = "Change password", skip(pool, password))]

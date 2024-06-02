@@ -1,18 +1,10 @@
 use anyhow::Context;
-use axum::{
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, Extension, Json};
 use serde::Deserialize;
 use sqlx::PgPool;
 
-use crate::telemetry;
-use crate::{
-    authentication,
-    domain::{Email, SubscriptionStatus},
-};
+use crate::authentication::UserId;
+use crate::domain::{Email, SubscriptionStatus};
 use crate::{startup::AppState, utils::InternalServerError};
 
 struct ConfirmedSubscriber {
@@ -31,71 +23,20 @@ pub struct Content {
     text: String,
 }
 
-#[derive(thiserror::Error)]
-pub enum PublishError {
-    #[error("Authentication failed")]
-    AuthError(#[source] anyhow::Error),
-
-    #[error(transparent)]
-    UnexpectedError(#[from] anyhow::Error),
-}
-
-impl std::fmt::Debug for PublishError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        telemetry::error_chain_fmt(self, f)
-    }
-}
-
-impl IntoResponse for PublishError {
-    fn into_response(self) -> axum::response::Response {
-        match self {
-            Self::AuthError(_) => {
-                // Auth error, ignore logging
-                let mut response = (
-                    StatusCode::UNAUTHORIZED,
-                    "Authentication failed".to_string(),
-                )
-                    .into_response();
-
-                authentication::add_basic_auth_header(response.headers_mut());
-                response
-            }
-            Self::UnexpectedError(e) => InternalServerError(e).into_response(),
-        }
-    }
-}
-
-#[tracing::instrument(
-    name = "Publishing newsletter",
-    skip(db_pool, email_client, headers, body)
-)]
+#[tracing::instrument(name = "Publishing newsletter", skip(db_pool, email_client, body))]
 pub async fn publish_newsletter(
     State(AppState {
         db_pool,
         email_client,
         ..
     }): State<AppState>,
-    headers: HeaderMap,
+    Extension(user_id): Extension<UserId>,
     Json(body): Json<BodyData>,
-) -> Result<(), PublishError> {
-    let credentials =
-        authentication::retrieve_basic_auth(&headers).map_err(PublishError::AuthError)?;
-    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
-
-    let user_id = authentication::validate_credentials(&db_pool, credentials)
-        .await
-        .map_err(|e| match e {
-            authentication::AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
-            authentication::AuthError::UnexpectedError(_) => {
-                PublishError::UnexpectedError(e.into())
-            }
-        })?;
-    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
-
+) -> Result<(), InternalServerError> {
     let subscribers = get_confirmed_subscribers(&db_pool)
         .await
         .context("Failed to get confirmed subscribers from the database")
-        .map_err(PublishError::UnexpectedError)?;
+        .map_err(InternalServerError)?;
 
     for subscriber in subscribers {
         match subscriber {
@@ -111,7 +52,7 @@ pub async fn publish_newsletter(
                     .with_context(|| {
                         format!("Failed to send newsletter issue to {}", subscriber.email)
                     })
-                    .map_err(PublishError::UnexpectedError)?;
+                    .map_err(InternalServerError)?;
             }
             Err(e) => {
                 tracing::warn!(

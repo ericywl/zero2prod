@@ -1,7 +1,6 @@
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
-use base64::Engine;
 use once_cell::sync::Lazy;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -122,34 +121,6 @@ impl TestApp {
             .await
     }
 
-    /// Send POST request to `/newsletters` with specified user.
-    pub async fn post_newsletters_with_user(
-        &self,
-        body: serde_json::Value,
-        optional_user: Option<TestUser>,
-    ) -> TestResponse {
-        let mut request = self.app_server.post("/newsletters").json(&body);
-
-        if let Some(user) = optional_user {
-            let basic_auth = base64::engine::general_purpose::STANDARD
-                .encode(format!("{}:{}", user.username, user.password));
-
-            let header_value = HeaderValue::from_str(&format!("Basic {}", basic_auth)).unwrap();
-            request = request.add_header(header::AUTHORIZATION, header_value)
-        }
-
-        request.await
-    }
-
-    /// Send POST request to `/newsletters` with default user that is authenticated.
-    pub async fn post_newsletters_with_default_user(
-        &self,
-        body: serde_json::Value,
-    ) -> TestResponse {
-        self.post_newsletters_with_user(body, Some(self.test_user.clone()))
-            .await
-    }
-
     /// Send POST request to `/subscribe` with name and email.
     pub async fn post_subscriptions(
         &self,
@@ -221,6 +192,14 @@ impl TestApp {
         self.app_server.get("/login").await
     }
 
+    pub async fn login_as_test_user(&self) -> TestResponse {
+        self.post_login(&serde_json::json!({
+            "username": self.test_user.username,
+            "password": self.test_user.password,
+        }))
+        .await
+    }
+
     pub async fn post_login<Body>(&self, body: &Body) -> TestResponse
     where
         Body: serde::Serialize,
@@ -245,6 +224,11 @@ impl TestApp {
         Body: serde::Serialize,
     {
         self.app_server.post("/admin/password").form(body).await
+    }
+
+    /// Send POST request to `/newsletters`.
+    pub async fn post_newsletters(&self, body: serde_json::Value) -> TestResponse {
+        self.app_server.post("/admin/newsletters").json(&body).await
     }
 }
 

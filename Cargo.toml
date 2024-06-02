@@ -19,7 +19,6 @@ axum = { version = "0.7.5", features = ["macros"] }
 axum-extra = { version = "0.9.3", features = ["cookie"] }
 axum-flash = "0.8.0"
 axum-test = "14.9.1"
-base64 = "0.22.1"
 config = "0.14.0"
 lazy_static = "1.4.0"
 rand = { version = "0.8.5", features = ["std_rng"] }

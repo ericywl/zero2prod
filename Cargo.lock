@@ -3575,7 +3575,6 @@ dependencies = [
  "axum-extra",
  "axum-flash",
  "axum-test",
- "base64 0.22.1",
  "chrono",
  "config",
  "fake",
