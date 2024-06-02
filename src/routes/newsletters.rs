@@ -8,12 +8,12 @@ use axum::{
 use serde::Deserialize;
 use sqlx::PgPool;
 
-use crate::startup::AppState;
 use crate::telemetry;
 use crate::{
     authentication,
     domain::{Email, SubscriptionStatus},
 };
+use crate::{startup::AppState, utils::InternalServerError};
 
 struct ConfirmedSubscriber {
     email: Email,
@@ -60,16 +60,7 @@ impl IntoResponse for PublishError {
                 authentication::add_basic_auth_header(response.headers_mut());
                 response
             }
-            Self::UnexpectedError(e) => {
-                // Log unexpected error
-                tracing::error!("{:?}", e);
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Something went wrong with publishing newsletter".to_string(),
-                )
-                    .into_response()
-            }
+            Self::UnexpectedError(e) => InternalServerError(e).into_response(),
         }
     }
 }

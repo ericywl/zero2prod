@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use super::routes;
-use axum::{http::Request, routing, Router};
+use axum::{http::Request, middleware, routing, Router};
 use secrecy::ExposeSecret;
 use sqlx::PgPool;
 use tower_http::{
@@ -16,6 +16,7 @@ use tower_sessions_redis_store::{
 use tracing::Level;
 
 use crate::{
+    authentication::reject_anonymous_users,
     configuration::{get_environment, Environment, Settings},
     domain::Url,
     email_client::EmailClient,
@@ -32,8 +33,8 @@ impl Application {
         app_state: AppState,
         session_layer: SessionManagerLayer<RedisStore<RedisPool>>,
     ) -> Self {
-        // Build our application
-        let mut router = Router::new()
+        // Normal user routes
+        let mut app_router = Router::new()
             .route("/", routing::get(routes::index))
             .route("/", routing::post(routes::subscribe_with_flash))
             .route("/health", routing::get(routes::health_check))
@@ -41,7 +42,14 @@ impl Application {
             .route("/login", routing::post(routes::login_with_flash))
             .route("/subscribe", routing::post(routes::subscribe))
             .route("/subscribe/confirm", routing::get(routes::confirm))
-            .route("/newsletters", routing::post(routes::publish_newsletter))
+            .route("/newsletters", routing::post(routes::publish_newsletter));
+        if let Environment::Local = get_environment() {
+            // Fake email server for local env
+            app_router = app_router.route("/email", routing::post(routes::fake_email))
+        };
+
+        // Admin routes
+        let admin_router = Router::new()
             .route("/admin/dashboard", routing::get(routes::admin_dashboard))
             .route(
                 "/admin/password",
@@ -52,6 +60,11 @@ impl Application {
                 routing::post(routes::change_password_with_flash),
             )
             .route("/admin/logout", routing::post(routes::admin_logout))
+            .layer(middleware::from_fn(reject_anonymous_users));
+
+        // Build our application
+        let router = app_router
+            .merge(admin_router)
             .with_state(app_state)
             .layer(
                 TraceLayer::new_for_http()
@@ -72,11 +85,6 @@ impl Application {
                     ),
             )
             .layer(session_layer);
-
-        if let Environment::Local = get_environment() {
-            // Fake email server for local env
-            router = router.route("/email", routing::post(routes::fake_email))
-        };
 
         Self {
             address: addr,

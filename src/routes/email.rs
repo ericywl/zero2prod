@@ -5,10 +5,10 @@ use std::{
 };
 
 use anyhow::Context;
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::telemetry;
+use crate::utils::InternalServerError;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -20,47 +20,21 @@ pub struct EmailRequest {
     text_body: String,
 }
 
-#[derive(thiserror::Error)]
-pub enum FakeEmailError {
-    #[error(transparent)]
-    UnexpectedError(#[from] anyhow::Error),
-}
-
-impl std::fmt::Debug for FakeEmailError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        telemetry::error_chain_fmt(self, f)
-    }
-}
-
-impl IntoResponse for FakeEmailError {
-    fn into_response(self) -> axum::response::Response {
-        match self {
-            Self::UnexpectedError(e) => {
-                // Log unexpected error
-                tracing::error!("{:?}", e);
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Something went wrong with saving fake email".to_string(),
-                )
-                    .into_response()
-            }
-        }
-    }
-}
-
 #[tracing::instrument(name = "Saving fake email request", skip(request))]
-pub async fn fake_email(Json(request): Json<EmailRequest>) -> Result<(), FakeEmailError> {
+pub async fn fake_email(Json(request): Json<EmailRequest>) -> Result<(), InternalServerError> {
     let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
     let mut buf = Vec::new();
     let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
 
     request
         .serialize(&mut ser)
-        .context("Failed to format email request")?;
+        .context("Failed to format email request")
+        .map_err(InternalServerError)?;
 
     // Create directory if not exist
-    fs::create_dir_all(".fake_emails/").context("Failed to create fake emails directory")?;
+    fs::create_dir_all(".fake_emails/")
+        .context("Failed to create fake emails directory")
+        .map_err(InternalServerError)?;
 
     // Write fake email to file
     let unix_time = SystemTime::now()
@@ -72,7 +46,8 @@ pub async fn fake_email(Json(request): Json<EmailRequest>) -> Result<(), FakeEma
         Path::new(".fake_emails").join(format!("{}__{}.json", unix_time.as_millis(), request.to)),
         pretty_request,
     )
-    .context("Failed to write fake email request")?;
+    .context("Failed to write fake email request")
+    .map_err(InternalServerError)?;
 
     Ok(())
 }

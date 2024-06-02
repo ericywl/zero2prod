@@ -2,21 +2,57 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
-    Form,
+    Extension, Form,
 };
 use axum_flash::{Flash, IncomingFlashes};
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::{
-    authentication, database::user_db, routes::utils::get_success_and_error_flash_message,
-    session_state::TypedSession, startup::AppState, telemetry, template,
+    authentication::{self, UserId},
+    database::user_db,
+    startup::AppState,
+    telemetry, template,
+    utils::{get_success_and_error_flash_message, InternalServerError},
 };
+
+pub async fn change_password_form(flashes: IncomingFlashes) -> impl IntoResponse {
+    let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
+    (
+        flashes,
+        Html(template::admin_change_password_html(success_msg, error_msg)),
+    )
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChangePasswordFormData {
+    current_password: SecretString,
+    new_password: SecretString,
+    new_password_check: SecretString,
+}
+
+pub async fn change_password_with_flash(
+    state: State<AppState>,
+    flash: Flash,
+    Extension(user_id): Extension<UserId>,
+    form: Form<ChangePasswordFormData>,
+) -> Response {
+    match change_password(state, user_id, form).await {
+        Ok(_) => (
+            flash.success("Your password has been changed"),
+            Redirect::to("/admin/password"),
+        )
+            .into_response(),
+        Err(e) => match e {
+            ChangePasswordError::DifferentNewPasswords | ChangePasswordError::IncorrectPassword => {
+                (flash.error(e.to_string()), Redirect::to("/admin/password")).into_response()
+            }
+            _ => e.into_response(),
+        },
+    }
+}
 
 #[derive(thiserror::Error)]
 pub enum ChangePasswordError {
-    #[error("Not logged in")]
-    NotLoggedIn,
-
     #[error("The current password is incorrect")]
     IncorrectPassword,
 
@@ -36,7 +72,7 @@ impl std::fmt::Debug for ChangePasswordError {
 impl IntoResponse for ChangePasswordError {
     fn into_response(self) -> axum::response::Response {
         match self {
-            Self::NotLoggedIn | Self::IncorrectPassword => {
+            Self::IncorrectPassword => {
                 (StatusCode::UNAUTHORIZED, "Authentication error".to_string()).into_response()
             }
 
@@ -46,91 +82,23 @@ impl IntoResponse for ChangePasswordError {
             )
                 .into_response(),
 
-            Self::UnexpectedError(e) => {
-                // Log unexpected error
-                tracing::error!("{:?}", e);
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Something went wrong with change password".to_string(),
-                )
-                    .into_response()
-            }
+            Self::UnexpectedError(e) => InternalServerError(e).into_response(),
         }
-    }
-}
-
-pub async fn change_password_form(
-    flashes: IncomingFlashes,
-    session: TypedSession,
-) -> Result<Response, ChangePasswordError> {
-    if session
-        .get_user_id()
-        .await
-        .map_err(|e| ChangePasswordError::UnexpectedError(e.into()))?
-        .is_none()
-    {
-        return Ok(Redirect::to("/login").into_response());
-    }
-
-    let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
-    Ok((
-        flashes,
-        Html(template::admin_change_password_html(success_msg, error_msg)),
-    )
-        .into_response())
-}
-
-#[derive(serde::Deserialize)]
-pub struct ChangePasswordFormData {
-    current_password: SecretString,
-    new_password: SecretString,
-    new_password_check: SecretString,
-}
-
-pub async fn change_password_with_flash(
-    state: State<AppState>,
-    flash: Flash,
-    session: TypedSession,
-    form: Form<ChangePasswordFormData>,
-) -> Response {
-    match change_password(state, session, form).await {
-        Ok(_) => (
-            flash.success("Your password has been changed"),
-            Redirect::to("/admin/password"),
-        )
-            .into_response(),
-        Err(e) => match e {
-            ChangePasswordError::NotLoggedIn => (flash, Redirect::to("/login")).into_response(),
-            ChangePasswordError::DifferentNewPasswords | ChangePasswordError::IncorrectPassword => {
-                (flash.error(e.to_string()), Redirect::to("/admin/password")).into_response()
-            }
-            _ => e.into_response(),
-        },
     }
 }
 
 pub async fn change_password(
     State(AppState { db_pool, .. }): State<AppState>,
-    session: TypedSession,
+    user_id: UserId,
     Form(data): Form<ChangePasswordFormData>,
 ) -> Result<(), ChangePasswordError> {
-    let user_id = session
-        .get_user_id()
-        .await
-        .map_err(|e| ChangePasswordError::UnexpectedError(e.into()))?;
-    if user_id.is_none() {
-        return Err(ChangePasswordError::NotLoggedIn);
-    }
-    let user_id = user_id.unwrap();
-
     // New passwords mismatch
     if data.new_password.expose_secret() != data.new_password_check.expose_secret() {
         return Err(ChangePasswordError::DifferentNewPasswords);
     }
 
     // Validate current password
-    let username = user_db::get_username(&db_pool, user_id)
+    let username = user_db::get_username(&db_pool, *user_id)
         .await
         .map_err(ChangePasswordError::UnexpectedError)?;
     let credentials = authentication::Credentials {
@@ -148,7 +116,7 @@ pub async fn change_password(
             }
         })?;
 
-    authentication::change_password(&db_pool, user_id, data.new_password)
+    authentication::change_password(&db_pool, *user_id, data.new_password)
         .await
         .map_err(ChangePasswordError::UnexpectedError)?;
 

@@ -1,6 +1,5 @@
 use axum::{
     extract::State,
-    http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
@@ -8,27 +7,24 @@ use axum_flash::{Flash, IncomingFlashes};
 use secrecy::SecretString;
 use serde::Deserialize;
 
-use crate::{authentication, session_state::TypedSession, startup::AppState, telemetry, template};
+use crate::{
+    authentication,
+    session_state::TypedSession,
+    startup::AppState,
+    telemetry, template,
+    utils::{e500, get_success_and_error_flash_message, InternalServerError},
+};
 
-use super::utils::get_success_and_error_flash_message;
-
-pub async fn login_form(flashes: IncomingFlashes, session: TypedSession) -> Response {
-    let user_id = match session.get_user_id().await {
-        Ok(id) => id,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Something went wrong with logout".to_string(),
-            )
-                .into_response()
-        }
-    };
-    if user_id.is_some() {
-        return (flashes, Redirect::to("/admin/dashboard")).into_response();
+pub async fn login_form(
+    flashes: IncomingFlashes,
+    session: TypedSession,
+) -> Result<Response, InternalServerError> {
+    if session.get_user_id().await.map_err(e500)?.is_some() {
+        Ok((flashes, Redirect::to("/admin/dashboard")).into_response())
+    } else {
+        let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
+        Ok((flashes, Html(template::login_html(success_msg, error_msg))).into_response())
     }
-
-    let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
-    (flashes, Html(template::login_html(success_msg, error_msg))).into_response()
 }
 
 #[derive(Deserialize)]

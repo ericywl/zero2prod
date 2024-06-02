@@ -12,6 +12,7 @@ use crate::{
     domain::{ParseSubscriptionTokenError, SubscriptionStatus, SubscriptionToken},
     startup::AppState,
     telemetry,
+    utils::InternalServerError,
 };
 
 #[derive(Debug, Deserialize)]
@@ -59,16 +60,7 @@ impl IntoResponse for ConfirmSubscriptionError {
                 )
                     .into_response()
             }
-            Self::UnexpectedError(e) => {
-                // Log unexpected error
-                tracing::error!("{:?}", e);
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Something went wrong with subscription".to_string(),
-                )
-                    .into_response()
-            }
+            Self::UnexpectedError(e) => InternalServerError(e).into_response(),
         }
     }
 }

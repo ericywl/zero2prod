@@ -12,6 +12,7 @@ use crate::domain::{
 };
 use crate::email_client::{EmailClient, SendEmailError};
 use crate::startup::AppState;
+use crate::utils::InternalServerError;
 use crate::{telemetry, template};
 
 #[derive(Debug, thiserror::Error)]
@@ -81,16 +82,7 @@ impl IntoResponse for SubscribeError {
                 )
                     .into_response()
             }
-            Self::UnexpectedError(e) => {
-                // Log unexpected error
-                tracing::error!("{:?}", e);
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Something went wrong with subscription".to_string(),
-                )
-                    .into_response()
-            }
+            Self::UnexpectedError(e) => InternalServerError(e).into_response(),
         }
     }
 }
