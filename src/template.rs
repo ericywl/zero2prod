@@ -49,9 +49,11 @@ pub fn confirmation_email_html(name: &Name, link: &Url) -> String {
 }
 
 /// Renders login page with optional error message.
-pub fn login_html(error_msg: Option<String>) -> String {
+pub fn login_html(success_msg: Option<String>, error_msg: Option<String>) -> String {
     let mut context = Context::new();
-    if let Some(msg) = error_msg {
+    if let Some(msg) = success_msg {
+        context.insert("success_msg", &msg);
+    } else if let Some(msg) = error_msg {
         context.insert("error_msg", &msg);
     }
 
@@ -67,9 +69,14 @@ pub fn admin_dashboard_html(username: &Name) -> String {
 }
 
 /// Renders admin change password form with optional error message.
-pub fn admin_change_password_html(error_msg: Option<String>) -> String {
+pub fn admin_change_password_html(
+    success_msg: Option<String>,
+    error_msg: Option<String>,
+) -> String {
     let mut context = Context::new();
-    if let Some(msg) = error_msg {
+    if let Some(msg) = success_msg {
+        context.insert("success_msg", &msg);
+    } else if let Some(msg) = error_msg {
         context.insert("error_msg", &msg);
     }
 
@@ -96,7 +103,7 @@ mod test {
 
     #[test]
     fn login_template_works() {
-        login_html(Some("something".into()));
+        login_html(None, Some("something".into()));
     }
 
     #[test]
@@ -107,6 +114,6 @@ mod test {
 
     #[test]
     fn admin_change_password_template_works() {
-        admin_change_password_html(Some("something".into()));
+        admin_change_password_html(Some("good".into()), Some("something".into()));
     }
 }

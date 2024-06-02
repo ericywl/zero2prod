@@ -15,6 +15,10 @@ impl TypedSession {
         self.0.cycle_id().await
     }
 
+    pub async fn logout(&self) {
+        self.0.clear().await
+    }
+
     pub async fn insert_user_id(&self, user_id: Uuid) -> Result<(), session::Error> {
         self.0.insert(Self::USER_ID_KEY, user_id).await
     }

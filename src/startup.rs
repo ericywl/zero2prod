@@ -51,6 +51,7 @@ impl Application {
                 "/admin/password",
                 routing::post(routes::change_password_with_flash),
             )
+            .route("/admin/logout", routing::post(routes::admin_logout))
             .with_state(app_state)
             .layer(
                 TraceLayer::new_for_http()
@@ -154,7 +155,7 @@ pub async fn default_app_state_and_session(
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(false)
         .with_expiry(tower_sessions::Expiry::OnInactivity(
-            time::Duration::seconds(10),
+            time::Duration::minutes(10),
         ));
 
     (

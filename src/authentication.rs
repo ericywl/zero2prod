@@ -1,12 +1,12 @@
-use anyhow::Context;
-use argon2::{Argon2, PasswordVerifier};
+use anyhow::{Context, Ok};
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher, PasswordVerifier};
 use axum::http::{header, HeaderMap, HeaderValue};
 use base64::Engine;
 use secrecy::{ExposeSecret, Secret, SecretString};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::telemetry;
+use crate::telemetry::{self, spawn_blocking_with_tracing};
 
 pub struct Credentials {
     pub username: String,
@@ -136,4 +136,42 @@ pub fn retrieve_basic_auth(headers: &HeaderMap) -> Result<Credentials, anyhow::E
 pub fn add_basic_auth_header(headers: &mut HeaderMap) {
     let header_value = HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
     headers.insert(header::WWW_AUTHENTICATE, header_value);
+}
+
+#[tracing::instrument(name = "Change password", skip(pool, password))]
+pub async fn change_password(
+    pool: &PgPool,
+    user_id: Uuid,
+    password: SecretString,
+) -> Result<(), anyhow::Error> {
+    let password_hash = spawn_blocking_with_tracing(move || compute_password_hash(password))
+        .await?
+        .context("Failed to hash password")?;
+
+    sqlx::query!(
+        r#"
+        UPDATE users SET password_hash = $1
+        WHERE user_id = $2
+        "#,
+        password_hash.expose_secret(),
+        user_id
+    )
+    .execute(pool)
+    .await
+    .context("Failed to change user's password in the database")?;
+
+    Ok(())
+}
+
+fn compute_password_hash(password: SecretString) -> Result<SecretString, anyhow::Error> {
+    let salt = SaltString::generate(&mut rand::thread_rng());
+    let password_hash = Argon2::new(
+        argon2::Algorithm::Argon2id,
+        argon2::Version::V0x13,
+        argon2::Params::new(15000, 2, 1, None).unwrap(),
+    )
+    .hash_password(password.expose_secret().as_bytes(), &salt)?
+    .to_string();
+
+    Ok(Secret::new(password_hash))
 }

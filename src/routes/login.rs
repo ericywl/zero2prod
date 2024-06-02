@@ -1,6 +1,7 @@
 use axum::{
     extract::State,
-    response::{Html, IntoResponse, Redirect},
+    http::StatusCode,
+    response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
 use axum_flash::{Flash, IncomingFlashes};
@@ -9,14 +10,25 @@ use serde::Deserialize;
 
 use crate::{authentication, session_state::TypedSession, startup::AppState, telemetry, template};
 
-pub async fn login_form(flashes: IncomingFlashes) -> impl IntoResponse {
-    let error_msg = flashes
-        .iter()
-        // We only have at most 1 error message
-        .find(|(l, _)| l == &axum_flash::Level::Error)
-        .map(|(_, m)| m.to_string());
+use super::utils::get_success_and_error_flash_message;
 
-    (flashes, Html(template::login_html(error_msg)))
+pub async fn login_form(flashes: IncomingFlashes, session: TypedSession) -> Response {
+    let user_id = match session.get_user_id().await {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Something went wrong with logout".to_string(),
+            )
+                .into_response()
+        }
+    };
+    if user_id.is_some() {
+        return (flashes, Redirect::to("/admin/dashboard")).into_response();
+    }
+
+    let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
+    (flashes, Html(template::login_html(success_msg, error_msg))).into_response()
 }
 
 #[derive(Deserialize)]

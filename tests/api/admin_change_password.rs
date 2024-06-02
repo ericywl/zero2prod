@@ -91,3 +91,48 @@ async fn current_password_must_be_valid(pool: PgPool) {
     let html_page = test_app.get_admin_change_password().await.text();
     assert!(html_page.contains("The current password is incorrect"));
 }
+
+#[sqlx::test]
+async fn changing_password_works(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    let new_password = Uuid::new_v4().to_string();
+
+    // Act & Assert 1 - Login
+    let login_body = serde_json::json!({
+        "username": &test_app.test_user.username,
+        "password": &test_app.test_user.password
+    });
+    let response = test_app.post_login(&login_body).await;
+    assert_is_redirect_to(&response, "/admin/dashboard");
+
+    // Act & Assert 2 - Change password
+    let response = test_app
+        .post_admin_change_password(&serde_json::json!({
+            "current_password": &test_app.test_user.password,
+            "new_password": &new_password,
+            "new_password_check": &new_password,
+        }))
+        .await;
+    assert_is_redirect_to(&response, "/admin/password");
+
+    // Act & Assert 3 - Follow redirect
+    let html_page = test_app.get_admin_change_password().await.text();
+    assert!(html_page.contains("Your password has been changed"));
+
+    // Act & Assert 4 - Logout
+    let response = test_app.post_admin_logout().await;
+    assert_is_redirect_to(&response, "/login");
+
+    // Act & Assert 5 - Follow redirect
+    let html_page = test_app.get_login().await.text();
+    assert!(html_page.contains("You have successfully logged out"));
+
+    // Act & Assert 6 - Login using new password
+    let login_body = serde_json::json!({
+        "username": &test_app.test_user.username,
+        "password": &new_password
+    });
+    let response = test_app.post_login(&login_body).await;
+    assert_is_redirect_to(&response, "/admin/dashboard")
+}

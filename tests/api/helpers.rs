@@ -228,6 +228,10 @@ impl TestApp {
         self.app_server.post("/login").form(body).await
     }
 
+    pub async fn post_admin_logout(&self) -> TestResponse {
+        self.app_server.post("/admin/logout").await
+    }
+
     pub async fn get_admin_dashboard(&self) -> TestResponse {
         self.app_server.get("/admin/dashboard").await
     }
