@@ -78,8 +78,13 @@
             width: 460px;
         }
 
+        textarea {
+            resize: none;
+        }
+
         input[type="text"],
         input[type="password"],
+        textarea,
         .container button {
             width: 100%;
             padding: 10px;
@@ -130,27 +135,25 @@
 <body>
     <div class="header">
         <a href="/" class="logo">Zero2Prod</a>
-        {% if user_id %}
         <a href="/admin/dashboard">Dashboard</a>
-        {% endif %}
         <div class="header-right">
-            {% if user_id %}
+            <a href="/admin/password">Change Password</a>
             <form action="/admin/logout" method="post">
                 <button type="submit" class="link-button">Logout</button>
             </form>
-            {% else %}
-            <a href="/login">Login</a>
-            {% endif %}
         </div>
     </div>
 
     <div class="content">
         <div class="container">
-            <h2>Subscribe to our newsletter!</h2>
-            <form id="subscribeForm" action="/" method="post">
-                <input type="text" id="name" placeholder="Name" name="name" required>
-                <input type="text" id="email" placeholder="Email" name="email" required>
-                <button type="submit">Subscribe</button>
+            <h2>Publish Newsletter</h2>
+            <form action="/admin/newsletters" method="post">
+                <textarea id="title" placeholder="Title" name="title" required></textarea>
+                <textarea id="html-content" placeholder="HTML Content" name="html_content" rows="12"
+                    required></textarea>
+                <textarea id="text-content" placeholder="Text Content" name="text_content" rows="12"
+                    required></textarea>
+                <button type="submit">Publish</button>
             </form>
             {% if error_msg %}
             <div class="error_msg">

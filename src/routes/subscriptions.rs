@@ -47,13 +47,13 @@ impl TryFrom<SubscribeFormData> for NewSubscriber {
 
 #[derive(thiserror::Error)]
 pub enum SubscribeError {
-    #[error("{0}")]
+    #[error("Invalid form data")]
     FormValidationError(#[from] FormDataError),
 
-    #[error("subscription already confirmed")]
+    #[error("Subscription already confirmed")]
     AlreadyConfirmed,
 
-    #[error(transparent)]
+    #[error("Something went wrong")]
     UnexpectedError(#[from] anyhow::Error),
 }
 

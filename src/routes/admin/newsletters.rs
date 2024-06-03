@@ -1,29 +1,54 @@
 use anyhow::Context;
-use axum::{extract::State, Extension, Json};
+use axum::{
+    extract::State,
+    response::{Html, IntoResponse, Redirect},
+    Extension, Form,
+};
+use axum_flash::{Flash, IncomingFlashes};
 use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::authentication::UserId;
 use crate::domain::{Email, SubscriptionStatus};
+use crate::template;
+use crate::utils::get_success_and_error_flash_message;
 use crate::{startup::AppState, utils::InternalServerError};
+
+pub async fn publish_newsletter_form(flashes: IncomingFlashes) -> impl IntoResponse {
+    let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
+    (
+        flashes,
+        Html(template::admin_newsletter_html(success_msg, error_msg)),
+    )
+}
 
 struct ConfirmedSubscriber {
     email: Email,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BodyData {
+pub struct NewsletterFormData {
     title: String,
-    content: Content,
+    html_content: String,
+    text_content: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Content {
-    html: String,
-    text: String,
+pub async fn publish_newsletter_with_flash(
+    state: State<AppState>,
+    flash: Flash,
+    user_id_ext: Extension<UserId>,
+    form: Form<NewsletterFormData>,
+) -> impl IntoResponse {
+    match publish_newsletter(state, user_id_ext, form).await {
+        Ok(()) => (
+            flash.success("Newsletter successfully published"),
+            Redirect::to("/admin/newsletters"),
+        ),
+        Err(e) => (flash.error(e.message()), Redirect::to("/admin/newsletters")),
+    }
 }
 
-#[tracing::instrument(name = "Publishing newsletter", skip(db_pool, email_client, body))]
+#[tracing::instrument(name = "Publishing newsletter", skip(db_pool, email_client, data))]
 pub async fn publish_newsletter(
     State(AppState {
         db_pool,
@@ -31,7 +56,7 @@ pub async fn publish_newsletter(
         ..
     }): State<AppState>,
     Extension(user_id): Extension<UserId>,
-    Json(body): Json<BodyData>,
+    Form(data): Form<NewsletterFormData>,
 ) -> Result<(), InternalServerError> {
     let subscribers = get_confirmed_subscribers(&db_pool)
         .await
@@ -44,9 +69,9 @@ pub async fn publish_newsletter(
                 email_client
                     .send_email(
                         &subscriber.email,
-                        &body.title,
-                        &body.content.html,
-                        &body.content.text,
+                        &data.title,
+                        &data.html_content,
+                        &data.text_content,
                     )
                     .await
                     .with_context(|| {

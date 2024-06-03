@@ -1,3 +1,8 @@
+.PHONY: install
+install:
+	cargo install cargo-tarpaulin
+	cargo install cargo-udeps
+
 .PHONY: clean
 clean:
 	rm -rf .fake_emails/
@@ -22,6 +27,10 @@ test:
 .PHONY: lint
 lint:
 	cargo clippy
+
+.PHONY: coverage
+coverage:
+	cargo tarpaulin --ignore-tests
 
 .PHONY: watch
 watch:

@@ -9,6 +9,12 @@ impl From<anyhow::Error> for InternalServerError {
     }
 }
 
+impl InternalServerError {
+    pub fn message(&self) -> String {
+        "Something went wrong".to_string()
+    }
+}
+
 impl IntoResponse for InternalServerError {
     fn into_response(self) -> axum::response::Response {
         // Log unexpected error

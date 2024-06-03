@@ -11,12 +11,10 @@ async fn unauthorized_requests_are_redirected_to_login(pool: PgPool) {
 
     // Act
     let response = test_app
-        .post_newsletters(serde_json::json!({
+        .post_admin_newsletters(&serde_json::json!({
             "title": "Newsletter title",
-            "content": {
-                "text": "Newsletter body as plain text",
-                "html": "<p>Newsletter body as HTML</p>",
-            }
+            "text_content": "Newsletter body as plain text",
+            "html_content": "<p>Newsletter body as HTML</p>",
         }))
         .await;
 
@@ -40,12 +38,14 @@ async fn create_subscriber(test_app: &helpers::TestApp, confirm: bool) {
 
     // Whether to confirm the subscriber or not
     if confirm {
-        test_app
+        let response = test_app
             .post_subscriptions_and_try_confirm(name, email)
             .await;
-    } else {
-        let response = test_app.post_subscriptions(name, email).await;
         response.assert_status_ok();
+    } else {
+        let _ = test_app
+            .post_subscriptions_and_extract_confirmation_link(name, email)
+            .await;
     }
 }
 
@@ -59,10 +59,8 @@ async fn newsletters_returns_error_for_invalid_data(pool: PgPool) {
     let test_cases = vec![
         (
             serde_json::json!({
-                "content": {
-                    "text": "Newsletter body as plain text",
-                    "html": "<p>Newsletter body as HTML</p>",
-                }
+                "text_content": "Newsletter body as plain text",
+                "html_content": "<p>Newsletter body as HTML</p>",
             }),
             "missing title",
         ),
@@ -74,7 +72,7 @@ async fn newsletters_returns_error_for_invalid_data(pool: PgPool) {
 
     for (invalid_body, error_message) in test_cases {
         // Act
-        let response = test_app.post_newsletters(invalid_body).await;
+        let response = test_app.post_admin_newsletters(&invalid_body).await;
 
         // Assert
         assert_eq!(
@@ -103,15 +101,17 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) 
     // Act
     let newsletter_request_body = serde_json::json!({
         "title": "Newsletter title",
-        "content": {
-            "text": "Newsletter body as plain text",
-            "html": "<p>Newsletter body as HTML</p>",
-        }
+        "text_content": "Newsletter body as plain text",
+        "html_content": "<p>Newsletter body as HTML</p>",
     });
-    let response = test_app.post_newsletters(newsletter_request_body).await;
+    let response = test_app
+        .post_admin_newsletters(&newsletter_request_body)
+        .await;
 
     // Assert
-    response.assert_status_ok();
+    assert_is_redirect_to(&response, "/admin/newsletters");
+    let html_page = test_app.get_admin_newsletters().await.text();
+    assert!(html_page.contains("Newsletter successfully published"));
 }
 
 #[sqlx::test]
@@ -132,14 +132,16 @@ async fn newsletters_are_delivered_to_confirmed_subscribers(pool: PgPool) {
     // Act
     let newsletter_request_body = serde_json::json!({
         "title": "Newsletter title",
-        "content": {
-            "text": "Newsletter body as plain text",
-            "html": "<p>Newsletter body as HTML</p>",
-        }
+        "text_content": "Newsletter body as plain text",
+        "html_content": "<p>Newsletter body as HTML</p>",
     });
-    let response = test_app.post_newsletters(newsletter_request_body).await;
+    let response = test_app
+        .post_admin_newsletters(&newsletter_request_body)
+        .await;
 
     // Assert
-    response.assert_status_ok();
+    assert_is_redirect_to(&response, "/admin/newsletters");
+    let html_page = test_app.get_admin_newsletters().await.text();
+    assert!(html_page.contains("Newsletter successfully published"));
     // Mock verifies on Drop that we have sent the newsletter email
 }

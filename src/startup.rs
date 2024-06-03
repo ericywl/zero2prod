@@ -35,12 +35,14 @@ impl Application {
     ) -> Self {
         // Normal user routes
         let mut app_router = Router::new()
-            .route("/", routing::get(routes::index))
-            .route("/", routing::post(routes::subscribe_with_flash))
             .route("/health", routing::get(routes::health_check))
+            // Index
+            .route("/", routing::get(routes::index))
+            // Login
             .route("/login", routing::get(routes::login_form))
             .route("/login", routing::post(routes::login_with_flash))
-            .route("/subscribe", routing::post(routes::subscribe))
+            // Subscription
+            .route("/subscribe", routing::post(routes::subscribe_with_flash))
             .route("/subscribe/confirm", routing::get(routes::confirm));
         if let Environment::Local = get_environment() {
             // Fake email server for local env
@@ -49,7 +51,11 @@ impl Application {
 
         // Admin routes
         let admin_router = Router::new()
+            // Dashboard
             .route("/admin/dashboard", routing::get(routes::admin_dashboard))
+            // Logout
+            .route("/admin/logout", routing::post(routes::admin_logout))
+            // Change password
             .route(
                 "/admin/password",
                 routing::get(routes::change_password_form),
@@ -58,11 +64,16 @@ impl Application {
                 "/admin/password",
                 routing::post(routes::change_password_with_flash),
             )
-            .route("/admin/logout", routing::post(routes::admin_logout))
+            // Newsletters
             .route(
                 "/admin/newsletters",
-                routing::post(routes::publish_newsletter),
+                routing::get(routes::publish_newsletter_form),
             )
+            .route(
+                "/admin/newsletters",
+                routing::post(routes::publish_newsletter_with_flash),
+            )
+            // Middleware to reject non-logged-in users
             .layer(middleware::from_fn(reject_anonymous_users));
 
         // Build our application

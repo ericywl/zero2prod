@@ -121,6 +121,10 @@ impl TestApp {
             .await
     }
 
+    pub async fn get_index(&self) -> TestResponse {
+        self.app_server.get("/").await
+    }
+
     /// Send POST request to `/subscribe` with name and email.
     pub async fn post_subscriptions(
         &self,
@@ -149,7 +153,10 @@ impl TestApp {
         email: Option<String>,
     ) -> ConfirmationLinks {
         let response = self.post_subscriptions(name, email).await;
-        response.assert_status_ok();
+        assert_is_redirect_to(&response, "/");
+
+        let html_page = self.get_index().await.text();
+        assert!(html_page.contains("Thanks for subscribing!"));
 
         let email_request = &self.email_server.received_requests().await.unwrap()[0];
         // Parse body as JSON
@@ -226,9 +233,16 @@ impl TestApp {
         self.app_server.post("/admin/password").form(body).await
     }
 
+    pub async fn get_admin_newsletters(&self) -> TestResponse {
+        self.app_server.get("/admin/newsletters").await
+    }
+
     /// Send POST request to `/newsletters`.
-    pub async fn post_newsletters(&self, body: serde_json::Value) -> TestResponse {
-        self.app_server.post("/admin/newsletters").json(&body).await
+    pub async fn post_admin_newsletters<Body>(&self, body: &Body) -> TestResponse
+    where
+        Body: serde::Serialize,
+    {
+        self.app_server.post("/admin/newsletters").form(body).await
     }
 }
 

@@ -85,6 +85,18 @@ pub fn admin_change_password_html(
         .unwrap()
 }
 
+/// Renders admin publish newsletter form with optional error message.
+pub fn admin_newsletter_html(success_msg: Option<String>, error_msg: Option<String>) -> String {
+    let mut context = Context::new();
+    if let Some(msg) = success_msg {
+        context.insert("success_msg", &msg);
+    } else if let Some(msg) = error_msg {
+        context.insert("error_msg", &msg);
+    }
+
+    TEMPLATES.render("admin/newsletter.html", &context).unwrap()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -115,5 +127,10 @@ mod test {
     #[test]
     fn admin_change_password_template_works() {
         admin_change_password_html(Some("good".into()), Some("something".into()));
+    }
+
+    #[test]
+    fn admin_newsletter_template_works() {
+        admin_newsletter_html(Some("yeah".into()), None);
     }
 }

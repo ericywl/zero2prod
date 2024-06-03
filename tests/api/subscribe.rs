@@ -3,10 +3,10 @@ use sqlx::PgPool;
 use wiremock::{matchers, Mock, ResponseTemplate};
 use zero2prod::domain::{SubscriptionStatus, Url};
 
-use crate::helpers;
+use crate::helpers::{self, assert_is_redirect_to};
 
 #[sqlx::test]
-async fn subscribe_returns_ok_for_valid_form_data(pool: PgPool) {
+async fn subscribe_works_for_valid_form_data(pool: PgPool) {
     // Arrange
     let test_app = helpers::TestApp::setup(pool).await;
     let name = "Bob Banjo";
@@ -25,7 +25,9 @@ async fn subscribe_returns_ok_for_valid_form_data(pool: PgPool) {
         .await;
 
     // Assert
-    response.assert_status_ok();
+    assert_is_redirect_to(&response, "/");
+    let html_page = test_app.get_index().await.text();
+    assert!(html_page.contains("Thanks for subscribing"));
 }
 
 #[sqlx::test]
@@ -140,9 +142,10 @@ async fn subscribe_returns_error_when_fields_are_present_but_invalid(pool: PgPoo
         let response = test_app.post_subscriptions(t.name, t.email).await;
 
         // Assert
-        assert_eq!(
-            response.status_code(),
-            StatusCode::UNPROCESSABLE_ENTITY,
+        assert_is_redirect_to(&response, "/");
+        let html_page = test_app.get_index().await.text();
+        assert!(
+            html_page.contains("Invalid form data"),
             "API did not fail when payload was {}",
             error_message
         );
@@ -167,7 +170,9 @@ async fn subscribe_sends_a_confirmation_email_for_valid_data(pool: PgPool) {
     let response = test_app.post_subscriptions(Some(name), Some(email)).await;
 
     // Assert
-    response.assert_status_ok();
+    assert_is_redirect_to(&response, "/");
+    let html_page = test_app.get_index().await.text();
+    assert!(html_page.contains("Thanks for subscribing"));
 }
 
 #[sqlx::test]
@@ -271,7 +276,11 @@ async fn subscribe_returns_error_if_subscription_already_confirmed(pool: PgPool)
 
     // Act
     let response = test_app.post_subscriptions(Some(name), Some(email)).await;
-    response.assert_status(StatusCode::CONFLICT);
+
+    // Assert
+    assert_is_redirect_to(&response, "/");
+    let html_page = test_app.get_index().await.text();
+    assert!(html_page.contains("Subscription already confirmed"));
 }
 
 #[sqlx::test]
@@ -293,5 +302,7 @@ async fn subscribe_fails_if_there_is_a_fatal_database_error(pool: PgPool) {
         .await;
 
     // Assert
-    response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    assert_is_redirect_to(&response, "/");
+    let html_page = test_app.get_index().await.text();
+    assert!(html_page.contains("Something went wrong"));
 }
