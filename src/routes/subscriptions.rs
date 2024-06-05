@@ -90,9 +90,9 @@ impl IntoResponse for SubscribeError {
 pub async fn subscribe_with_flash(
     state: State<AppState>,
     flash: Flash,
-    form: Form<SubscribeFormData>,
+    Form(data): Form<SubscribeFormData>,
 ) -> impl IntoResponse {
-    match subscribe(state, form).await {
+    match subscribe(state, data).await {
         Ok(()) => (flash.success("Thanks for subscribing!"), Redirect::to("/")),
         Err(e) => (flash.error(e.to_string()), Redirect::to("/")),
     }
@@ -106,14 +106,14 @@ pub async fn subscribe_with_flash(
         subscriber_name = %data.name
     )
 )]
-pub async fn subscribe(
+async fn subscribe(
     State(AppState {
         db_pool,
         email_client,
         app_base_url,
         ..
     }): State<AppState>,
-    Form(data): Form<SubscribeFormData>,
+    data: SubscribeFormData,
 ) -> Result<(), SubscribeError> {
     let mut new_subscriber: NewSubscriber = data.try_into()?;
     let subscription_token: SubscriptionToken;

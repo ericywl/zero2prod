@@ -86,8 +86,13 @@ pub fn admin_change_password_html(
 }
 
 /// Renders admin publish newsletter form with optional error message.
-pub fn admin_newsletter_html(success_msg: Option<String>, error_msg: Option<String>) -> String {
+pub fn admin_newsletter_html(
+    success_msg: Option<String>,
+    error_msg: Option<String>,
+    idempotency_key: String,
+) -> String {
     let mut context = Context::new();
+    context.insert("idempotency_key", &idempotency_key);
     if let Some(msg) = success_msg {
         context.insert("success_msg", &msg);
     } else if let Some(msg) = error_msg {
@@ -131,6 +136,6 @@ mod test {
 
     #[test]
     fn admin_newsletter_template_works() {
-        admin_newsletter_html(Some("yeah".into()), None);
+        admin_newsletter_html(Some("yeah".into()), None, Uuid::new_v4().to_string());
     }
 }

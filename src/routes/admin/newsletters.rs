@@ -1,24 +1,32 @@
 use anyhow::Context;
 use axum::{
     extract::State,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse, Redirect, Response},
     Extension, Form,
 };
 use axum_flash::{Flash, IncomingFlashes};
 use serde::Deserialize;
 use sqlx::PgPool;
+use uuid::Uuid;
 
-use crate::authentication::UserId;
-use crate::domain::{Email, SubscriptionStatus};
-use crate::template;
-use crate::utils::get_success_and_error_flash_message;
+use crate::{authentication::UserId, idempotency::IdempotencyKey};
+use crate::{
+    domain::{Email, SubscriptionStatus},
+    idempotency::get_saved_response,
+};
+use crate::{idempotency::save_response, utils::get_success_and_error_flash_message};
 use crate::{startup::AppState, utils::InternalServerError};
+use crate::{template, utils::e500};
 
 pub async fn publish_newsletter_form(flashes: IncomingFlashes) -> impl IntoResponse {
     let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
     (
         flashes,
-        Html(template::admin_newsletter_html(success_msg, error_msg)),
+        Html(template::admin_newsletter_html(
+            success_msg,
+            error_msg,
+            Uuid::new_v4().to_string(),
+        )),
     )
 }
 
@@ -31,37 +39,62 @@ pub struct NewsletterFormData {
     title: String,
     html_content: String,
     text_content: String,
+    idempotency_key: String,
 }
 
 pub async fn publish_newsletter_with_flash(
-    state: State<AppState>,
+    State(state): State<AppState>,
     flash: Flash,
-    user_id_ext: Extension<UserId>,
-    form: Form<NewsletterFormData>,
-) -> impl IntoResponse {
-    match publish_newsletter(state, user_id_ext, form).await {
-        Ok(()) => (
-            flash.success("Newsletter successfully published"),
-            Redirect::to("/admin/newsletters"),
-        ),
-        Err(e) => (flash.error(e.message()), Redirect::to("/admin/newsletters")),
+    Extension(user_id): Extension<UserId>,
+    Form(data): Form<NewsletterFormData>,
+) -> Response {
+    match publish_newsletter_with_idempotent_handling(state, user_id, data).await {
+        Ok(r) => (flash.success("Newsletter successfully published"), r).into_response(),
+        Err(e) => (flash.error(e.message()), Redirect::to("/admin/newsletters")).into_response(),
     }
 }
 
+async fn publish_newsletter_with_idempotent_handling(
+    state: AppState,
+    user_id: UserId,
+    data: NewsletterFormData,
+) -> Result<Response, InternalServerError> {
+    let idempotency_key: IdempotencyKey =
+        data.idempotency_key.to_string().try_into().map_err(e500)?;
+
+    // Return early if we have a saved response in the database
+    if let Some(saved_response) = get_saved_response(&state.db_pool, &idempotency_key, *user_id)
+        .await
+        .map_err(e500)?
+    {
+        return Ok(saved_response);
+    }
+
+    // Publish newsletter
+    publish_newsletter(state.clone(), user_id, data).await?;
+
+    // Save response
+    let response = Redirect::to("/admin/newsletters").into_response();
+    let response = save_response(&state.db_pool, &idempotency_key, *user_id, response)
+        .await
+        .map_err(e500)?;
+    Ok(response)
+}
+
 #[tracing::instrument(name = "Publishing newsletter", skip(db_pool, email_client, data))]
-pub async fn publish_newsletter(
-    State(AppState {
+async fn publish_newsletter(
+    AppState {
         db_pool,
         email_client,
         ..
-    }): State<AppState>,
-    Extension(user_id): Extension<UserId>,
-    Form(data): Form<NewsletterFormData>,
+    }: AppState,
+    user_id: UserId,
+    data: NewsletterFormData,
 ) -> Result<(), InternalServerError> {
     let subscribers = get_confirmed_subscribers(&db_pool)
         .await
         .context("Failed to get confirmed subscribers from the database")
-        .map_err(InternalServerError)?;
+        .map_err(e500)?;
 
     for subscriber in subscribers {
         match subscriber {
@@ -77,7 +110,7 @@ pub async fn publish_newsletter(
                     .with_context(|| {
                         format!("Failed to send newsletter issue to {}", subscriber.email)
                     })
-                    .map_err(InternalServerError)?;
+                    .map_err(e500)?;
             }
             Err(e) => {
                 tracing::warn!(

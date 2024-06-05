@@ -61,9 +61,9 @@ pub async fn login_with_flash(
     state: State<AppState>,
     flash: Flash,
     session: TypedSession,
-    form: Form<LoginFormData>,
+    Form(data): Form<LoginFormData>,
 ) -> impl IntoResponse {
-    match login(state, session, form).await {
+    match login(state, session, data).await {
         Ok(()) => (flash, Redirect::to("/admin/dashboard")),
         // Redirect back to login page with flash message
         Err(e) => (flash.error(e.to_string()), Redirect::to("/login")),
@@ -71,10 +71,10 @@ pub async fn login_with_flash(
 }
 
 #[tracing::instrument(skip(db_pool, session, data), fields(username=tracing::field::Empty, user_id=tracing::field::Empty))]
-pub async fn login(
+async fn login(
     State(AppState { db_pool, .. }): State<AppState>,
     session: TypedSession,
-    Form(data): Form<LoginFormData>,
+    data: LoginFormData,
 ) -> Result<(), LoginError> {
     let credentials: authentication::Credentials = data.into();
     tracing::Span::current().record("username", &tracing::field::display(&credentials.username));

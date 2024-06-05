@@ -30,9 +30,9 @@ impl IntoResponse for InternalServerError {
 
 pub fn e500<T>(e: T) -> InternalServerError
 where
-    T: std::error::Error + Sync + Send + 'static,
+    T: std::fmt::Display + std::fmt::Debug + Sync + Send + 'static,
 {
-    InternalServerError(e.into())
+    InternalServerError(anyhow::anyhow!(e))
 }
 
 pub fn get_success_and_error_flash_message(

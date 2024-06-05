@@ -4,6 +4,15 @@ use wiremock::{matchers, Mock, ResponseTemplate};
 
 use crate::helpers::{self, assert_is_redirect_to};
 
+fn sample_newsletter_request_body() -> impl serde::Serialize {
+    serde_json::json!({
+        "title": "Newsletter title",
+        "text_content": "Newsletter body as plain text",
+        "html_content": "<p>Newsletter body as HTML</p>",
+        "idempotency_key": uuid::Uuid::new_v4().to_string(),
+    })
+}
+
 #[sqlx::test]
 async fn unauthorized_requests_are_redirected_to_login(pool: PgPool) {
     // Arrange
@@ -11,11 +20,7 @@ async fn unauthorized_requests_are_redirected_to_login(pool: PgPool) {
 
     // Act
     let response = test_app
-        .post_admin_newsletters(&serde_json::json!({
-            "title": "Newsletter title",
-            "text_content": "Newsletter body as plain text",
-            "html_content": "<p>Newsletter body as HTML</p>",
-        }))
+        .post_admin_newsletters(&sample_newsletter_request_body())
         .await;
 
     // Assert
@@ -61,11 +66,15 @@ async fn newsletters_returns_error_for_invalid_data(pool: PgPool) {
             serde_json::json!({
                 "text_content": "Newsletter body as plain text",
                 "html_content": "<p>Newsletter body as HTML</p>",
+                "idempotency_key": uuid::Uuid::new_v4().to_string(),
             }),
             "missing title",
         ),
         (
-            serde_json::json!({"title": "Newsletter!"}),
+            serde_json::json!({
+                "title": "Newsletter!",
+                "idempotency_key": uuid::Uuid::new_v4().to_string(),
+            }),
             "missing content",
         ),
     ];
@@ -99,13 +108,8 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) 
         .await;
 
     // Act
-    let newsletter_request_body = serde_json::json!({
-        "title": "Newsletter title",
-        "text_content": "Newsletter body as plain text",
-        "html_content": "<p>Newsletter body as HTML</p>",
-    });
     let response = test_app
-        .post_admin_newsletters(&newsletter_request_body)
+        .post_admin_newsletters(&sample_newsletter_request_body())
         .await;
 
     // Assert
@@ -130,13 +134,8 @@ async fn newsletters_are_delivered_to_confirmed_subscribers(pool: PgPool) {
         .await;
 
     // Act
-    let newsletter_request_body = serde_json::json!({
-        "title": "Newsletter title",
-        "text_content": "Newsletter body as plain text",
-        "html_content": "<p>Newsletter body as HTML</p>",
-    });
     let response = test_app
-        .post_admin_newsletters(&newsletter_request_body)
+        .post_admin_newsletters(&sample_newsletter_request_body())
         .await;
 
     // Assert
@@ -144,4 +143,34 @@ async fn newsletters_are_delivered_to_confirmed_subscribers(pool: PgPool) {
     let html_page = test_app.get_admin_newsletters().await.text();
     assert!(html_page.contains("Newsletter successfully published"));
     // Mock verifies on Drop that we have sent the newsletter email
+}
+
+#[sqlx::test]
+async fn newsletter_creation_is_idempotent(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    test_app.login_as_test_user().await;
+    create_subscriber(&test_app, true).await;
+
+    Mock::given(matchers::path("/email"))
+        .and(matchers::method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&test_app.email_server)
+        .await;
+
+    // Act & Assert 1 - Submit newsletter
+    let request_body = sample_newsletter_request_body();
+    let response = test_app.post_admin_newsletters(&request_body).await;
+    assert_is_redirect_to(&response, "/admin/newsletters");
+    let html_page = test_app.get_admin_newsletters().await.text();
+    assert!(html_page.contains("Newsletter successfully published"));
+
+    // Act & Assert 2 - Submit newsletter again
+    let response = test_app.post_admin_newsletters(&request_body).await;
+    assert_is_redirect_to(&response, "/admin/newsletters");
+    let html_page = test_app.get_admin_newsletters().await.text();
+    assert!(html_page.contains("Newsletter successfully published"));
+
+    // Mock verifies on Drop that we have sent the newsletter email **once**
 }

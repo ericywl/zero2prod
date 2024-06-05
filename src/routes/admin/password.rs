@@ -33,10 +33,10 @@ pub struct ChangePasswordFormData {
 pub async fn change_password_with_flash(
     state: State<AppState>,
     flash: Flash,
-    user_id_ext: Extension<UserId>,
-    form: Form<ChangePasswordFormData>,
+    Extension(user_id): Extension<UserId>,
+    Form(data): Form<ChangePasswordFormData>,
 ) -> Response {
-    match change_password(state, user_id_ext, form).await {
+    match change_password(state, user_id, data).await {
         Ok(_) => (
             flash.success("Your password has been changed"),
             Redirect::to("/admin/password"),
@@ -87,10 +87,10 @@ impl IntoResponse for ChangePasswordError {
     }
 }
 
-pub async fn change_password(
+async fn change_password(
     State(AppState { db_pool, .. }): State<AppState>,
-    Extension(user_id): Extension<UserId>,
-    Form(data): Form<ChangePasswordFormData>,
+    user_id: UserId,
+    data: ChangePasswordFormData,
 ) -> Result<(), ChangePasswordError> {
     // New passwords mismatch
     if data.new_password.expose_secret() != data.new_password_check.expose_secret() {

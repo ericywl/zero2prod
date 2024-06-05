@@ -153,6 +153,7 @@
                     required></textarea>
                 <textarea id="text-content" placeholder="Text Content" name="text_content" rows="12"
                     required></textarea>
+                <input hidden type="text" name="idempotency_key" value="{{ idempotency_key }}">
                 <button type="submit">Publish</button>
             </form>
             {% if error_msg %}

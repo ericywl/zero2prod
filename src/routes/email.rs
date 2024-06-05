@@ -8,7 +8,7 @@ use anyhow::Context;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::utils::InternalServerError;
+use crate::utils::{e500, InternalServerError};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -29,12 +29,12 @@ pub async fn fake_email(Json(request): Json<EmailRequest>) -> Result<(), Interna
     request
         .serialize(&mut ser)
         .context("Failed to format email request")
-        .map_err(InternalServerError)?;
+        .map_err(e500)?;
 
     // Create directory if not exist
     fs::create_dir_all(".fake_emails/")
         .context("Failed to create fake emails directory")
-        .map_err(InternalServerError)?;
+        .map_err(e500)?;
 
     // Write fake email to file
     let unix_time = SystemTime::now()
@@ -47,7 +47,7 @@ pub async fn fake_email(Json(request): Json<EmailRequest>) -> Result<(), Interna
         pretty_request,
     )
     .context("Failed to write fake email request")
-    .map_err(InternalServerError)?;
+    .map_err(e500)?;
 
     Ok(())
 }
