@@ -158,9 +158,12 @@ impl TestApp {
         let html_page = self.get_index().await.text();
         assert!(html_page.contains("Thanks for subscribing!"));
 
-        let email_request = &self.email_server.received_requests().await.unwrap()[0];
+        let email_requests = &self.email_server.received_requests().await.unwrap();
+        let latest_email_request = email_requests
+            .last()
+            .expect("No email received on mock email server");
         // Parse body as JSON
-        let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&latest_email_request.body).unwrap();
         // Extract link from request fields
         let get_link = |s: &str| {
             let links: Vec<_> = linkify::LinkFinder::new()

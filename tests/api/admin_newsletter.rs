@@ -1,4 +1,9 @@
 use axum::http::StatusCode;
+use axum_test::TestResponse;
+use fake::{
+    faker::{internet::en::SafeEmail, name::en::Name},
+    Fake,
+};
 use sqlx::PgPool;
 use wiremock::{matchers, Mock, ResponseTemplate};
 
@@ -38,8 +43,8 @@ async fn create_subscriber(test_app: &helpers::TestApp, confirm: bool) {
         .mount_as_scoped(&test_app.email_server)
         .await;
 
-    let name = Some("naruto".into());
-    let email = Some("naruto@gmail.come".into());
+    let name = Some(Name().fake());
+    let email = Some(SafeEmail().fake());
 
     // Whether to confirm the subscriber or not
     if confirm {
@@ -52,6 +57,15 @@ async fn create_subscriber(test_app: &helpers::TestApp, confirm: bool) {
             .post_subscriptions_and_extract_confirmation_link(name, email)
             .await;
     }
+}
+
+async fn assert_newsletter_successfully_published(
+    test_app: &helpers::TestApp,
+    response: &TestResponse,
+) {
+    assert_is_redirect_to(response, "/admin/newsletters");
+    let html_page = test_app.get_admin_newsletters().await.text();
+    assert!(html_page.contains("Newsletter successfully published"));
 }
 
 #[sqlx::test]
@@ -113,9 +127,7 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers(pool: PgPool) 
         .await;
 
     // Assert
-    assert_is_redirect_to(&response, "/admin/newsletters");
-    let html_page = test_app.get_admin_newsletters().await.text();
-    assert!(html_page.contains("Newsletter successfully published"));
+    assert_newsletter_successfully_published(&test_app, &response).await;
 }
 
 #[sqlx::test]
@@ -139,9 +151,7 @@ async fn newsletters_are_delivered_to_confirmed_subscribers(pool: PgPool) {
         .await;
 
     // Assert
-    assert_is_redirect_to(&response, "/admin/newsletters");
-    let html_page = test_app.get_admin_newsletters().await.text();
-    assert!(html_page.contains("Newsletter successfully published"));
+    assert_newsletter_successfully_published(&test_app, &response).await;
     // Mock verifies on Drop that we have sent the newsletter email
 }
 
@@ -162,15 +172,11 @@ async fn newsletter_creation_is_idempotent(pool: PgPool) {
     // Act & Assert 1 - Submit newsletter
     let request_body = sample_newsletter_request_body();
     let response = test_app.post_admin_newsletters(&request_body).await;
-    assert_is_redirect_to(&response, "/admin/newsletters");
-    let html_page = test_app.get_admin_newsletters().await.text();
-    assert!(html_page.contains("Newsletter successfully published"));
+    assert_newsletter_successfully_published(&test_app, &response).await;
 
     // Act & Assert 2 - Submit newsletter again
     let response = test_app.post_admin_newsletters(&request_body).await;
-    assert_is_redirect_to(&response, "/admin/newsletters");
-    let html_page = test_app.get_admin_newsletters().await.text();
-    assert!(html_page.contains("Newsletter successfully published"));
+    assert_newsletter_successfully_published(&test_app, &response).await;
 
     // Mock verifies on Drop that we have sent the newsletter email **once**
 }
@@ -200,8 +206,61 @@ async fn concurrent_form_submission_is_handled_gracefully(pool: PgPool) {
     assert_eq!(response1.status_code(), response2.status_code());
     assert_eq!(response1.text(), response2.text());
     // Check that the latest call to newsletters is also successful
-    assert_is_redirect_to(&response2, "/admin/newsletters");
-    let html_page = test_app.get_admin_newsletters().await.text();
-    assert!(html_page.contains("Newsletter successfully published"));
+    assert_newsletter_successfully_published(&test_app, &response2).await;
     // Mock verifies on Drop that we have sent the newsletter email **once**
+}
+
+#[sqlx::test]
+async fn transient_errors_do_not_cause_duplicate_deliveries_on_retries(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    // Create 2 subscribers
+    create_subscriber(&test_app, true).await;
+    create_subscriber(&test_app, true).await;
+    test_app.login_as_test_user().await;
+    let newsletter_request_body = sample_newsletter_request_body();
+
+    // Act & Assert 1 - Submit newsletter form
+    // Email delivery fails for second subscriber
+    {
+        let _m2 = Mock::given(matchers::path("/email"))
+            .and(matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount_as_scoped(&test_app.email_server)
+            .await;
+        let _m1 = Mock::given(matchers::path("/email"))
+            .and(matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount_as_scoped(&test_app.email_server)
+            .await;
+
+        let response = test_app
+            .post_admin_newsletters(&newsletter_request_body)
+            .await;
+        assert_is_redirect_to(&response, "/admin/newsletters");
+        let html_page = test_app.get_admin_newsletters().await.text();
+        assert!(html_page.contains("Something went wrong"));
+    }
+
+    // Act & Assert 2 - Retry submit form after first failure
+    {
+        let _m = Mock::given(matchers::path("/email"))
+            .and(matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .named("Delivery retry")
+            .mount_as_scoped(&test_app.email_server)
+            .await;
+
+        let response = test_app
+            .post_admin_newsletters(&newsletter_request_body)
+            .await;
+        assert_newsletter_successfully_published(&test_app, &response).await;
+    }
+
+    // Mock verifies on Drop that we did not send out duplicates
 }
