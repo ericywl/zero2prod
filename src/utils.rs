@@ -1,17 +1,26 @@
 use axum::{http::StatusCode, response::IntoResponse};
 use axum_flash::IncomingFlashes;
 
+use crate::telemetry;
+
+#[derive(thiserror::Error)]
 pub struct InternalServerError(pub anyhow::Error);
+
+impl std::fmt::Display for InternalServerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Something went wrong: {}", self.0)
+    }
+}
+
+impl std::fmt::Debug for InternalServerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        telemetry::error_chain_fmt(self, f)
+    }
+}
 
 impl From<anyhow::Error> for InternalServerError {
     fn from(value: anyhow::Error) -> Self {
         Self(value)
-    }
-}
-
-impl InternalServerError {
-    pub fn message(&self) -> String {
-        "Something went wrong".to_string()
     }
 }
 

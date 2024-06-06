@@ -2,6 +2,7 @@
 name = "zero2prod"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.75"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -18,7 +19,7 @@ anyhow = "1.0.86"
 axum = { version = "0.7.5", features = ["macros"] }
 axum-extra = { version = "0.9.3", features = ["cookie"] }
 axum-flash = "0.8.0"
-axum-test = "14.9.1"
+axum-test = "15.0.0"
 config = "0.14.0"
 lazy_static = "1.4.0"
 rand = { version = "0.8.5", features = ["std_rng"] }

@@ -94,7 +94,10 @@ pub async fn subscribe_with_flash(
 ) -> impl IntoResponse {
     match subscribe(state, data).await {
         Ok(()) => (flash.success("Thanks for subscribing!"), Redirect::to("/")),
-        Err(e) => (flash.error(e.to_string()), Redirect::to("/")),
+        Err(e) => {
+            tracing::error!("{:?}", e);
+            (flash.error(e.to_string()), Redirect::to("/"))
+        }
     }
 }
 

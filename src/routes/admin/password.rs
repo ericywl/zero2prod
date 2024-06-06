@@ -44,6 +44,7 @@ pub async fn change_password_with_flash(
             .into_response(),
         Err(e) => match e {
             ChangePasswordError::DifferentNewPasswords | ChangePasswordError::IncorrectPassword => {
+                tracing::error!("{:?}", e);
                 (flash.error(e.to_string()), Redirect::to("/admin/password")).into_response()
             }
             _ => e.into_response(),

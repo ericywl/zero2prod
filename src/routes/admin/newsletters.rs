@@ -9,14 +9,14 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{authentication::UserId, idempotency::IdempotencyKey};
 use crate::{
+    authentication::UserId,
     domain::{Email, SubscriptionStatus},
-    idempotency::get_saved_response,
+    idempotency::{save_response, try_processing, IdempotencyKey, NextAction},
+    startup::AppState,
+    template,
+    utils::{e500, get_success_and_error_flash_message, InternalServerError},
 };
-use crate::{idempotency::save_response, utils::get_success_and_error_flash_message};
-use crate::{startup::AppState, utils::InternalServerError};
-use crate::{template, utils::e500};
 
 pub async fn publish_newsletter_form(flashes: IncomingFlashes) -> impl IntoResponse {
     let (success_msg, error_msg) = get_success_and_error_flash_message(&flashes);
@@ -50,7 +50,14 @@ pub async fn publish_newsletter_with_flash(
 ) -> Response {
     match publish_newsletter_with_idempotent_handling(state, user_id, data).await {
         Ok(r) => (flash.success("Newsletter successfully published"), r).into_response(),
-        Err(e) => (flash.error(e.message()), Redirect::to("/admin/newsletters")).into_response(),
+        Err(e) => {
+            tracing::error!("{:?}", e);
+            (
+                flash.error(e.to_string()),
+                Redirect::to("/admin/newsletters"),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -63,19 +70,22 @@ async fn publish_newsletter_with_idempotent_handling(
         data.idempotency_key.to_string().try_into().map_err(e500)?;
 
     // Return early if we have a saved response in the database
-    if let Some(saved_response) = get_saved_response(&state.db_pool, &idempotency_key, *user_id)
+    let transaction = match try_processing(&state.db_pool, &idempotency_key, *user_id)
         .await
         .map_err(e500)?
     {
-        return Ok(saved_response);
-    }
+        NextAction::StartProcessing(t) => t,
+        NextAction::ReturnSavedResponse(saved_response) => {
+            return Ok(saved_response);
+        }
+    };
 
     // Publish newsletter
     publish_newsletter(state.clone(), user_id, data).await?;
 
     // Save response
     let response = Redirect::to("/admin/newsletters").into_response();
-    let response = save_response(&state.db_pool, &idempotency_key, *user_id, response)
+    let response = save_response(transaction, &idempotency_key, *user_id, response)
         .await
         .map_err(e500)?;
     Ok(response)

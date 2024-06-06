@@ -66,7 +66,10 @@ pub async fn login_with_flash(
     match login(state, session, data).await {
         Ok(()) => (flash, Redirect::to("/admin/dashboard")),
         // Redirect back to login page with flash message
-        Err(e) => (flash.error(e.to_string()), Redirect::to("/login")),
+        Err(e) => {
+            tracing::error!("{:?}", e);
+            (flash.error(e.to_string()), Redirect::to("/login"))
+        }
     }
 }
 

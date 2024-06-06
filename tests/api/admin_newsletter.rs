@@ -174,3 +174,34 @@ async fn newsletter_creation_is_idempotent(pool: PgPool) {
 
     // Mock verifies on Drop that we have sent the newsletter email **once**
 }
+
+#[sqlx::test]
+async fn concurrent_form_submission_is_handled_gracefully(pool: PgPool) {
+    // Arrange
+    let test_app = helpers::TestApp::setup(pool).await;
+    test_app.login_as_test_user().await;
+    create_subscriber(&test_app, true).await;
+
+    Mock::given(matchers::path("/email"))
+        .and(matchers::method("POST"))
+        // Setting a long delay to ensure that the second request
+        // arrives before the first one completes
+        .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(2)))
+        .expect(1)
+        .mount(&test_app.email_server)
+        .await;
+
+    // Act - Submit two newsletter forms concurrently
+    let newsletter_request_body = sample_newsletter_request_body();
+    let response1 = test_app.post_admin_newsletters(&newsletter_request_body);
+    let response2 = test_app.post_admin_newsletters(&newsletter_request_body);
+    let (response1, response2) = tokio::join!(response1, response2);
+
+    assert_eq!(response1.status_code(), response2.status_code());
+    assert_eq!(response1.text(), response2.text());
+    // Check that the latest call to newsletters is also successful
+    assert_is_redirect_to(&response2, "/admin/newsletters");
+    let html_page = test_app.get_admin_newsletters().await.text();
+    assert!(html_page.contains("Newsletter successfully published"));
+    // Mock verifies on Drop that we have sent the newsletter email **once**
+}
