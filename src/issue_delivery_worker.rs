@@ -45,7 +45,7 @@ pub enum ExecutionOutcome {
 #[tracing::instrument(
     skip_all,
     fields(
-        newsletter_issue_id=tracing::field::Empty, 
+        newsletter_issue_id=tracing::field::Empty,
         subscriber_email=tracing::field::Empty
     ),
     err
