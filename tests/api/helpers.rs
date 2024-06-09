@@ -9,6 +9,7 @@ use wiremock::MockServer;
 use zero2prod::{
     configuration::get_configuration,
     domain::Url,
+    issue_delivery_worker::{try_execute_task, ExecutionOutcome},
     startup::{default_app_state_and_session, AppState},
     telemetry::{get_subscriber, init_subscriber},
 };
@@ -246,6 +247,18 @@ impl TestApp {
         Body: serde::Serialize,
     {
         self.app_server.post("/admin/newsletters").form(body).await
+    }
+
+    pub async fn dispatch_all_pending_emails(&self) {
+        loop {
+            if let ExecutionOutcome::EmptyQueue =
+                try_execute_task(&self.app_state.db_pool, &self.app_state.email_client)
+                    .await
+                    .unwrap()
+            {
+                break;
+            }
+        }
     }
 }
 
